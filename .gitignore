@@ -1,0 +1,20 @@
+# IDE
+.idea
+.vscode
+
+# tmp
+tmp
+*.bak
+
+# secrets
+*.crt
+*token
+
+# binaries
+*/bin
+
+# ignore ansible inventory
+manifests/ansible/inventory/*.ini
+
+# ignore helmvalues.yaml
+helm/values.yaml
