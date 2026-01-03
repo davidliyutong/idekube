@@ -40,3 +40,5 @@ translate the docs to english
 
 ## 2
 
+- create manifests/third_party/objectstorage/* to run a [RustFS](https://rustfs.com/) server as a statefulset with a service in kubernetes, with persistent volume claims for storage
+- create manifests/third_party/registry/* to run a [angos](https://github.com/project-angos/angos) in kubernetes, with persistent volume claims for storage

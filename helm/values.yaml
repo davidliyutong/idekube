@@ -23,12 +23,9 @@ controller:
     targetPort: 8080
 
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
     requests:
-      cpu: 250m
-      memory: 256Mi
+      cpu: 50m
+      memory: 512Mi
 
   autoscaling:
     enabled: false
@@ -70,16 +67,13 @@ rbac:
     targetPort: 8081
 
   resources:
-    limits:
-      cpu: 300m
-      memory: 384Mi
     requests:
-      cpu: 150m
-      memory: 192Mi
+      cpu: 50m
+      memory: 256Mi
 
   autoscaling:
     enabled: false
-    minReplicas: 2
+    minReplicas: 1
     maxReplicas: 10
     targetCPUUtilizationPercentage: 80
 
@@ -117,12 +111,9 @@ housekeeper:
     targetPort: 8082
 
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
     requests:
-      cpu: 250m
-      memory: 256Mi
+      cpu: 100m
+      memory: 512Mi
 
   # Housekeeper specific configuration
   config:
@@ -154,7 +145,7 @@ housekeeper:
 # Frontend service - hosts the UI
 frontend:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
 
   image:
     repository: davidliyutong/idekube-frontend
@@ -167,16 +158,13 @@ frontend:
     targetPort: 3000
 
   resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 50m
+      memory: 256Mi
 
   autoscaling:
-    enabled: true
-    minReplicas: 2
+    enabled: false
+    minReplicas: 1
     maxReplicas: 10
     targetCPUUtilizationPercentage: 80
 
@@ -212,59 +200,75 @@ ingress:
             service:
               name: controller
               port: 8080
-        - path: /api/rbac
-          pathType: Prefix
-          backend:
-            service:
-              name: rbac
-              port: 8081
   tls:
     - secretName: idekube-tls
       hosts:
         - "{{ .Values.ingress.hostname }}"
 
-# PostgreSQL configuration (using Bitnami chart)
+# PostgreSQL configuration
 postgresql:
   enabled: true
   auth:
     username: idekube
-    password: "changeme"
+    # SECURITY WARNING: Do not use default password in production!
+    # Generate a strong password: openssl rand -base64 32
+    # For production, use existingSecret or set via --set postgresql.auth.password=<secure-password>
+    password: ""
     database: idekube
+    # Name of existing secret containing 'postgres-password' key
+    # If set, the 'password' field will be ignored
     existingSecret: ""
   primary:
     persistence:
       enabled: true
       size: 10Gi
+      # Storage class for PostgreSQL PVC
+      # If not set, will use global.storageClass
+      # If global.storageClass is also empty, will use cluster default
+      storageClass: ""
     resources:
       limits:
         cpu: 1000m
         memory: 1Gi
       requests:
-        cpu: 250m
+        cpu: 50m
         memory: 256Mi
   metrics:
     enabled: true
     serviceMonitor:
       enabled: false
 
-# RabbitMQ configuration (using Bitnami chart)
+# RabbitMQ configuration
 rabbitmq:
   enabled: true
   auth:
     username: idekube
-    password: "changeme"
+    # SECURITY WARNING: Do not use default password in production!
+    # Generate a strong password: openssl rand -base64 32
+    # For production, use existingPasswordSecret or set via --set rabbitmq.auth.password=<secure-password>
+    password: ""
+    # Name of existing secret containing 'rabbitmq-password' key
+    # If set, the 'password' field will be ignored
     existingPasswordSecret: ""
-    erlangCookie: "idekubesecretcookie"
+    # CRITICAL: Erlang cookie must be set for RabbitMQ clustering
+    # Generate a strong random cookie: openssl rand -base64 32
+    # NEVER commit the production cookie to version control!
+    # Set via: --set rabbitmq.auth.erlangCookie=<secure-random-string>
+    erlangCookie: ""
   persistence:
     enabled: true
     size: 8Gi
+    # Storage class for RabbitMQ PVC
+    # If not set, will use global.storageClass
+    # If global.storageClass is also empty, will use cluster default
+    storageClass: ""
   resources:
     limits:
       cpu: 1000m
       memory: 1Gi
     requests:
-      cpu: 250m
-      memory: 256Mi
+      cpu: 1000m
+      memory: 512Mi
   metrics:
     enabled: true
     serviceMonitor:
@@ -308,9 +312,21 @@ affinity: {}
 # Additional secrets (for database passwords, API keys, etc.)
 secrets:
   # These will be created as a Secret named idekube-secrets
+  # SECURITY WARNING: All secrets MUST be changed in production!
+  # 
+  # Generate strong passwords and keys:
+  #   Password: openssl rand -base64 32
+  #   JWT Secret: openssl rand -base64 64
+  #   Encryption Key: openssl rand -hex 32
+  # 
+  # For production deployment, pass secrets via:
+  #   --set secrets.DATABASE_PASSWORD=<secure-password> \
+  #   --set secrets.RABBITMQ_PASSWORD=<secure-password> \
+  #   --set secrets.JWT_SECRET=<secure-jwt-key>
+  # 
+  # Or create an external secret and reference it in the deployments
   DATABASE_USER: "idekube"
-  DATABASE_PASSWORD: "changeme"
+  DATABASE_PASSWORD: ""  # MUST BE SET - see security notes above
   RABBITMQ_USER: "idekube"
-  RABBITMQ_PASSWORD: "changeme"
-  JWT_SECRET: "your-jwt-secret-key-change-me"
-  ENCRYPTION_KEY: "your-encryption-key-change-me"
+  RABBITMQ_PASSWORD: ""  # MUST BE SET - see security notes above
+  JWT_SECRET: ""  # MUST BE SET - see security notes above

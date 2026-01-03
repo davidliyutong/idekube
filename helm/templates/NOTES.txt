@@ -94,7 +94,6 @@ Important Notes:
    - secrets.DATABASE_PASSWORD
    - secrets.RABBITMQ_PASSWORD
    - secrets.JWT_SECRET
-   - secrets.ENCRYPTION_KEY
 
 📝 Next Steps:
 

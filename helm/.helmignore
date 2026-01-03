@@ -21,3 +21,11 @@
 .idea/
 *.tmproj
 .vscode/
+
+# Security: Ignore any files that might contain secrets
+values-secrets.yaml
+*-secrets.yaml
+*.env
+credentials.*
+.env.*
+secrets/
