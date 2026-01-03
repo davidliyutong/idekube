@@ -1,0 +1,316 @@
+# Default values for idekube
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  imagePullSecrets: []
+  storageClass: ""
+
+# Controller service - handles CRD operations and core components
+controller:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: davidliyutong/idekube-controller
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+  env:
+    - name: DATABASE_HOST
+      value: '{{ include "idekube.postgresql.fullname" . }}'
+    - name: DATABASE_PORT
+      value: "5432"
+    - name: DATABASE_NAME
+      value: "idekube"
+    - name: RABBITMQ_HOST
+      value: '{{ include "idekube.rabbitmq.fullname" . }}'
+    - name: RABBITMQ_PORT
+      value: "5672"
+    - name: LOG_LEVEL
+      value: "info"
+
+  envFrom:
+    - secretRef:
+        name: idekube-secrets
+
+# RBAC microservice - handles permission management
+rbac:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: davidliyutong/idekube-rbac
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+  service:
+    type: ClusterIP
+    port: 8081
+    targetPort: 8081
+
+  resources:
+    limits:
+      cpu: 300m
+      memory: 384Mi
+    requests:
+      cpu: 150m
+      memory: 192Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+  env:
+    - name: DATABASE_HOST
+      value: '{{ include "idekube.postgresql.fullname" . }}'
+    - name: DATABASE_PORT
+      value: "5432"
+    - name: DATABASE_NAME
+      value: "idekube"
+    - name: RABBITMQ_HOST
+      value: '{{ include "idekube.rabbitmq.fullname" . }}'
+    - name: RABBITMQ_PORT
+      value: "5672"
+    - name: LOG_LEVEL
+      value: "info"
+
+  envFrom:
+    - secretRef:
+        name: idekube-secrets
+
+# Housekeeper service - manages lifetime of containers
+housekeeper:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: davidliyutong/idekube-housekeeper
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+  service:
+    type: ClusterIP
+    port: 8082
+    targetPort: 8082
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  # Housekeeper specific configuration
+  config:
+    # Cleanup interval in seconds
+    cleanupInterval: 300
+    # Container TTL in seconds
+    containerTTL: 3600
+    # Max idle time in seconds
+    maxIdleTime: 1800
+
+  env:
+    - name: DATABASE_HOST
+      value: '{{ include "idekube.postgresql.fullname" . }}'
+    - name: DATABASE_PORT
+      value: "5432"
+    - name: DATABASE_NAME
+      value: "idekube"
+    - name: RABBITMQ_HOST
+      value: '{{ include "idekube.rabbitmq.fullname" . }}'
+    - name: RABBITMQ_PORT
+      value: "5672"
+    - name: LOG_LEVEL
+      value: "info"
+
+  envFrom:
+    - secretRef:
+        name: idekube-secrets
+
+# Frontend service - hosts the UI
+frontend:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: davidliyutong/idekube-frontend
+    pullPolicy: IfNotPresent
+    tag: "latest"
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+  env:
+    - name: API_CONTROLLER_URL
+      value: 'http://{{ include "idekube.controller.fullname" . }}:8080'
+    - name: API_RBAC_URL
+      value: 'http://{{ include "idekube.rbac.fullname" . }}:8081'
+    - name: NODE_ENV
+      value: "production"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  hostname: "idekube.example.com"
+  certIssuer: "letsencrypt-prod"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: "{{ .Values.ingress.hostname }}"
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend
+              port: 80
+        - path: /api/controller
+          pathType: Prefix
+          backend:
+            service:
+              name: controller
+              port: 8080
+        - path: /api/rbac
+          pathType: Prefix
+          backend:
+            service:
+              name: rbac
+              port: 8081
+  tls:
+    - secretName: idekube-tls
+      hosts:
+        - "{{ .Values.ingress.hostname }}"
+
+# PostgreSQL configuration (using Bitnami chart)
+postgresql:
+  enabled: true
+  auth:
+    username: idekube
+    password: "changeme"
+    database: idekube
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+# RabbitMQ configuration (using Bitnami chart)
+rabbitmq:
+  enabled: true
+  auth:
+    username: idekube
+    password: "changeme"
+    existingPasswordSecret: ""
+    erlangCookie: "idekubesecretcookie"
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+  clustering:
+    enabled: false
+
+# ServiceAccount configuration
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "idekube"
+
+# RBAC configuration
+rbacConfig:
+  create: true
+
+# Pod Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Additional secrets (for database passwords, API keys, etc.)
+secrets:
+  # These will be created as a Secret named idekube-secrets
+  DATABASE_USER: "idekube"
+  DATABASE_PASSWORD: "changeme"
+  RABBITMQ_USER: "idekube"
+  RABBITMQ_PASSWORD: "changeme"
+  JWT_SECRET: "your-jwt-secret-key-change-me"
+  ENCRYPTION_KEY: "your-encryption-key-change-me"

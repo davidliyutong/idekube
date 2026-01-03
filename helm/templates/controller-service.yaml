@@ -1,0 +1,17 @@
+{{- if .Values.controller.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "idekube.controller.fullname" . }}
+  labels:
+    {{- include "idekube.controller.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.controller.service.type }}
+  ports:
+    - port: {{ .Values.controller.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "idekube.controller.selectorLabels" . | nindent 4 }}
+{{- end }}

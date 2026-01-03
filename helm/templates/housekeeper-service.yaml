@@ -1,0 +1,17 @@
+{{- if .Values.housekeeper.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "idekube.housekeeper.fullname" . }}
+  labels:
+    {{- include "idekube.housekeeper.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.housekeeper.service.type }}
+  ports:
+    - port: {{ .Values.housekeeper.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "idekube.housekeeper.selectorLabels" . | nindent 4 }}
+{{- end }}

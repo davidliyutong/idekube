@@ -1,0 +1,16 @@
+apiVersion: v2
+name: idekube
+description: A Helm chart for idekube - Managed Cloud IDE Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ide
+  - cloud-ide
+  - development
+  - kubernetes
+maintainers:
+  - name: idekube-team
+home: https://github.com/davidliyutong/idekube
+sources:
+  - https://github.com/davidliyutong/idekube

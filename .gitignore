@@ -17,4 +17,3 @@ tmp
 manifests/ansible/inventory/*.ini
 
 # ignore helmvalues.yaml
-helm/values.yaml

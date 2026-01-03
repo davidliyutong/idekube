@@ -1,0 +1,19 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "idekube.postgresql.fullname" . }}
+  labels:
+    {{- include "idekube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    {{- include "idekube.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+{{- end }}

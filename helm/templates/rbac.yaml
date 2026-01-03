@@ -1,0 +1,81 @@
+{{- if .Values.rbacConfig.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "idekube.fullname" . }}-namespace-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "idekube.labels" . | nindent 4 }}
+rules:
+  # Full namespace admin permissions
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "idekube.fullname" . }}-namespace-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "idekube.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "idekube.fullname" . }}-namespace-admin
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "idekube.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "idekube.fullname" . }}
+  labels:
+    {{- include "idekube.labels" . | nindent 4 }}
+rules:
+  # Controller needs to manage custom resources
+  - apiGroups: ["idekube.io"]
+    resources: ["*"]
+    verbs: ["*"]
+  # Controller needs to manage pods for IDE containers
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Controller needs to manage services
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Controller needs to manage persistent volume claims
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Controller needs to read config maps and secrets
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  # Controller needs to manage deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Events for logging
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "idekube.fullname" . }}
+  labels:
+    {{- include "idekube.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "idekube.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "idekube.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

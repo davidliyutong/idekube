@@ -1,0 +1,114 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+====================================================================================
+IDEKUBE - Managed Cloud IDE Platform
+====================================================================================
+
+The following components have been deployed:
+
+{{- if .Values.controller.enabled }}
+✓ Controller Service (CRD operations & core components)
+{{- end }}
+{{- if .Values.rbac.enabled }}
+✓ RBAC Microservice (Permission management)
+{{- end }}
+{{- if .Values.housekeeper.enabled }}
+✓ Housekeeper Service (Container lifecycle management)
+{{- end }}
+{{- if .Values.frontend.enabled }}
+✓ Frontend Service (Web UI)
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+✓ PostgreSQL Database
+{{- end }}
+{{- if .Values.rabbitmq.enabled }}
+✓ RabbitMQ Message Queue
+{{- end }}
+
+====================================================================================
+Access Information:
+====================================================================================
+
+{{- if .Values.ingress.enabled }}
+1. Access the application via Ingress:
+
+{{- range .Values.ingress.hosts }}
+   URL: {{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}
+{{- end }}
+
+{{- else }}
+1. Access the frontend service:
+
+   export FRONTEND_POD=$(kubectl get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "idekube.name" . }},app.kubernetes.io/component=frontend" -o jsonpath="{.items[0].metadata.name}")
+   kubectl port-forward -n {{ .Release.Namespace }} $FRONTEND_POD 8080:3000
+
+   Visit http://localhost:8080 in your browser
+{{- end }}
+
+2. Access services directly (for debugging):
+
+   Controller API:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "idekube.controller.fullname" . }} 8080:8080
+
+   RBAC API:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "idekube.rbac.fullname" . }} 8081:8081
+
+{{- if .Values.postgresql.enabled }}
+
+3. Access PostgreSQL:
+
+   export POSTGRES_PASSWORD=$(kubectl get secret -n {{ .Release.Namespace }} idekube-secrets -o jsonpath="{.data.DATABASE_PASSWORD}" | base64 -d)
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "idekube.postgresql.fullname" . }} 5432:5432
+   
+   Connection string: postgresql://idekube:$POSTGRES_PASSWORD@localhost:5432/idekube
+{{- end }}
+
+{{- if .Values.rabbitmq.enabled }}
+
+4. Access RabbitMQ Management UI:
+
+   export RABBITMQ_PASSWORD=$(kubectl get secret -n {{ .Release.Namespace }} idekube-secrets -o jsonpath="{.data.RABBITMQ_PASSWORD}" | base64 -d)
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "idekube.rabbitmq.fullname" . }} 15672:15672
+   
+   Management UI: http://localhost:15672
+   Username: idekube
+   Password: $RABBITMQ_PASSWORD
+{{- end }}
+
+====================================================================================
+Important Notes:
+====================================================================================
+
+⚠️  SECURITY WARNING: Please change the default passwords in production!
+   
+   Update these values in your values.yaml or via --set:
+   - postgresql.auth.password
+   - rabbitmq.auth.password
+   - secrets.DATABASE_PASSWORD
+   - secrets.RABBITMQ_PASSWORD
+   - secrets.JWT_SECRET
+   - secrets.ENCRYPTION_KEY
+
+📝 Next Steps:
+
+   1. Verify all pods are running:
+      kubectl get pods -n {{ .Release.Namespace }}
+
+   2. Check the logs:
+      kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+   3. Apply CRDs (if you have them):
+      kubectl apply -f crds/
+
+   4. Create your first workspace/IDE instance
+
+====================================================================================
+For more information, visit: https://github.com/davidliyutong/idekube
+====================================================================================

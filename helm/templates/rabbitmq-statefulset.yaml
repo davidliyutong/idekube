@@ -1,0 +1,89 @@
+{{- if .Values.rabbitmq.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "idekube.rabbitmq.fullname" . }}
+  labels:
+    {{- include "idekube.labels" . | nindent 4 }}
+    app.kubernetes.io/component: message-broker
+spec:
+  serviceName: {{ include "idekube.rabbitmq.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "idekube.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: message-broker
+  template:
+    metadata:
+      labels:
+        {{- include "idekube.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: message-broker
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: rabbitmq
+        image: "rabbitmq:3.13-management-alpine"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: amqp
+          containerPort: 5672
+          protocol: TCP
+        - name: management
+          containerPort: 15672
+          protocol: TCP
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          value: {{ .Values.rabbitmq.auth.username | quote }}
+        - name: RABBITMQ_DEFAULT_PASS
+          value: {{ .Values.rabbitmq.auth.password | quote }}
+        - name: RABBITMQ_ERLANG_COOKIE
+          value: {{ .Values.rabbitmq.auth.erlangCookie | quote }}
+        - name: RABBITMQ_NODENAME
+          value: "rabbit@localhost"
+        livenessProbe:
+          exec:
+            command:
+              - rabbitmq-diagnostics
+              - ping
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+              - rabbitmq-diagnostics
+              - check_port_connectivity
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.rabbitmq.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/rabbitmq
+  {{- if .Values.rabbitmq.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      {{- if .Values.global.storageClass }}
+      storageClassName: {{ .Values.global.storageClass }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.rabbitmq.persistence.size }}
+  {{- else }}
+      volumes:
+      - name: data
+        emptyDir: {}
+  {{- end }}
+{{- end }}
