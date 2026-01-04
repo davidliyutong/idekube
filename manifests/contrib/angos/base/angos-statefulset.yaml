@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: angos
+  labels:
+    app: angos
+    component: registry
+spec:
+  serviceName: angos
+  replicas: 1
+  selector:
+    matchLabels:
+      app: angos
+  template:
+    metadata:
+      labels:
+        app: angos
+        component: registry
+    spec:
+      containers:
+      - name: angos
+        image: ghcr.io/project-angos/angos:latest
+        imagePullPolicy: IfNotPresent
+        args: ["-c", "/config/config.toml", "server"]
+        ports:
+        - name: angos
+          containerPort: 5000
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /config
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: angos-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: angos-data
+      # storageClassName: fast-ssd  # Uncomment and specify storage class if needed

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: angos
+  labels:
+    app: angos
+    component: registry
+spec:
+  type: ClusterIP
+  ports:
+  - name: angos
+    port: 5000
+    targetPort: 5000
+    protocol: TCP
+  selector:
+    app: angos
