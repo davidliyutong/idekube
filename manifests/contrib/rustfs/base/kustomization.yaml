@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rustfs-configmap.yaml
+  - rustfs-secret.yaml
+  - rustfs-pvc.yaml
+  - rustfs-statefulset.yaml
+  - rustfs-service.yaml
+  - rustfs-ingress.yaml

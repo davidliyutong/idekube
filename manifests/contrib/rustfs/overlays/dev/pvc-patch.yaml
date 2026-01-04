@@ -1,0 +1,10 @@
+# Patch for PVC - override size and storage class
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rustfs-data
+spec:
+  resources:
+    requests:
+      storage: 10Gi  # Smaller size for dev environment
+  # storageClassName: standard

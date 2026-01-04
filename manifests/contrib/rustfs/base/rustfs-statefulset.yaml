@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rustfs
+  labels:
+    app: rustfs
+    component: objectstorage
+spec:
+  serviceName: rustfs
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rustfs
+  template:
+    metadata:
+      labels:
+        app: rustfs
+        component: objectstorage
+    spec:
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: rustfs-data
+      containers:
+      - name: rustfs
+        image: rustfs/rustfs:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 9000
+          protocol: TCP
+        - name: console
+          containerPort: 9001
+          protocol: TCP
+        env:
+        - name: RUSTFS_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rustfs-credentials
+              key: rustfs-access-key
+        - name: RUSTFS_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rustfs-credentials
+              key: rustfs-secret-key
+        - name: RUSTFS_CONSOLE_ENABLE
+          valueFrom:
+            configMapKeyRef:
+              name: rustfs-config
+              key: RUSTFS_CONSOLE_ENABLE
+        - name: RUSTFS_SERVER_DOMAINS
+          valueFrom:
+            configMapKeyRef:
+              name: rustfs-config
+              key: RUSTFS_SERVER_DOMAINS
+        - name: RUSTFS_VOLUMES
+          value: "/data"
+        - name: RUSTFS_ADDRESS
+          value: ":9000"
+        - name: RUSTFS_CONSOLE_ADDRESS
+          value: ":9001"
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data

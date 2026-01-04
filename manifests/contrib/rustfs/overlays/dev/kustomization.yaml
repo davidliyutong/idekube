@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Reference to base configuration
+resources:
+  - ../../base
+
+# Strategic merge patches using separate files
+patches:
+  - path: ingress-patch.yaml
+    target:
+      kind: Ingress
+      name: rustfs
+  - path: pvc-patch.yaml
+    target:
+      kind: PersistentVolumeClaim
+      name: rustfs-data
+  - path: secret-patch.yaml
+    target:
+      kind: Secret
+      name: rustfs-credentials
+
+# Optional: Add a namespace or name prefix/suffix for dev environment
+# namespace: idekube-dev
+# namePrefix: dev-
+# nameSuffix: -dev
+
+# Optional: Add common labels for dev environment
+labels:
+  - pairs:
+      environment: dev

@@ -1,0 +1,40 @@
+# rustfs-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rustfs
+  labels:
+    app: rustfs
+    component: objectstorage
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  # ingressClassName: nginx
+  # tls:
+  #   - hosts:
+  #       - rustfs.example.com
+  #       - rustfs-console.example.com
+  #     secretName: rustfs-tls
+  rules:
+    # API Endpoint
+    - host: rustfs.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rustfs
+                port:
+                  number: 9000
+    # Console Endpoint
+    - host: rustfs-console.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rustfs
+                port:
+                  number: 9001

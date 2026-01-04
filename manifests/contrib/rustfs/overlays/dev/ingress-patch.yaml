@@ -1,0 +1,35 @@
+# Patch for Ingress - override hostname, class, and cert issuer
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rustfs
+  # annotations:
+  #   cert-manager.io/cluster-issuer: name-of-issuer
+spec:
+  # ingressClassName: nginx
+  # tls:
+  #   - hosts:
+  #       - rustfs-dev.example.com
+  #       - rustfs-console-dev.example.com
+  #     secretName: rustfs-tls
+  rules:
+    - host: rustfs.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rustfs
+                port:
+                  number: 9000
+    - host: rustfs-console.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rustfs
+                port:
+                  number: 9001

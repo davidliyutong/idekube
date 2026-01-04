@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rustfs-config
+  labels:
+    app: rustfs
+    component: objectstorage
+data:
+  # RustFS configuration
+  config.yaml: |
+    version: '1'
+    server:
+      address: ':9000'
+      console_address: ':9001'
+    storage:
+      path: /data
+      max_size: 100GB
+    logging:
+      level: info
+      format: json
+    security:
+      tls_enabled: false
+  RUSTFS_CONSOLE_ENABLE: "true"
+  RUSTFS_SERVER_DOMAINS: "localhost"
+
