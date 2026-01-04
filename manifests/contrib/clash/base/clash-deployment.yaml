@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clash
+  labels:
+    app: clash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clash
+  template:
+    metadata:
+      labels:
+        app: clash
+    spec:
+      containers:
+      - name: clash
+        image: laoyutang/clash-and-dashboard:latest
+        ports:
+        - name: http-proxy
+          containerPort: 7890
+          protocol: TCP
+        - name: dashboard
+          containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - name: clash-config
+          mountPath: /root/.config/clash/config.yaml
+          subPath: config.yaml
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: clash-config
+        configMap:
+          name: clash-config
