@@ -6,7 +6,7 @@ This directory contains Kubernetes manifests for deploying RustFS object storage
 
 This configuration uses Kustomize for deployment management:
 
-```
+```text
 rustfs/
 ├── base/                    # Base manifests
 │   ├── kustomization.yaml
@@ -61,6 +61,7 @@ kubectl apply -k manifests/services/rustfs/overlays/dev/
 Update the host names in [base/rustfs-ingress.yaml](base/rustfs-ingress.yaml) to match your domain.
 
 **Note**: The ingress is configured with:
+
 - Ingress class: `nginx`
 - TLS enabled with cert-manager using `letsencrypt` cluster issuer
 - TLS secret name: `rustfs-tls`
@@ -80,6 +81,7 @@ kubectl port-forward -n idekube svc/rustfs 9001:9001
 ### Credentials
 
 Default credentials (change in production!):
+
 - **Access Key**: rustfsadmin
 - **Secret Key**: rustfsadmin
 
@@ -95,6 +97,7 @@ Update credentials in [base/rustfs-secret.yaml](base/rustfs-secret.yaml) before 
 ### Resources
 
 Default resource limits:
+
 - CPU: 1000m (limit), 50m (request)
 - Memory: 2Gi (limit), 128Mi (request)
 
@@ -136,18 +139,21 @@ kubectl get pvc -n idekube
 ## Troubleshooting
 
 1. **Pod not starting**:
+
    ```bash
    kubectl describe pod -n idekube -l app=rustfs
    kubectl logs -n idekube -l app=rustfs
    ```
 
 2. **Storage issues**:
+
    ```bash
    kubectl get pvc -n idekube
    kubectl describe pvc -n idekube
    ```
 
 3. **Connection issues**:
+
    ```bash
    kubectl get svc -n idekube rustfs
    kubectl exec -n idekube -it rustfs-0 -- sh

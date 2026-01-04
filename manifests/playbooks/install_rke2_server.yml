@@ -1,0 +1,144 @@
+---
+- hosts: all
+  gather_facts: no
+  vars_prompt:
+    - name: "host"
+      prompt: "please enter the target hostname (server) from: {{ ansible_play_hosts }}"
+      private: no
+  tasks:
+    - add_host:
+        name: "{{ host }}"
+        groups: chosen_server_host
+
+- hosts: chosen_server_host
+  become: yes
+  vars_prompt:
+    - name: "service_node_port_range"
+      prompt: "Enter service-node-port-range"
+      default: "30000-40000"
+
+    - name: "cni"
+      prompt: "Enter cni"
+      default: "canal"
+
+    - name: "rke2_version"
+      prompt: "Enter RKE2 version"
+      default: "v1.25.11+rke2r1"
+  tasks:
+    - name: Check operating system
+      fail:
+        msg: "This playbook can only be run on CentOS, AlmaLinux or Rocky Linux."
+      when: ansible_distribution not in ['CentOS', 'AlmaLinux', 'Rocky']
+
+    - name: Check if /usr/bin/docker exists
+      stat:
+        path: /usr/bin/docker
+      register: docker_result
+
+    - name: Install Docker
+      block:
+        - name: Check if Docker repo is reachable
+          shell:
+            cmd: curl -Is --max-time 5 https://download.docker.com/linux/centos/docker-ce.repo | head -n 1 | grep "200\|301"
+          register: repo_status
+          ignore_errors: true
+
+        - name: Add Docker repo
+          command: >
+            dnf config-manager --add-repo {{ 'https://download.docker.com/linux/centos/docker-ce.repo' if (repo_status.rc == 0) else 'https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo' }}      
+
+        - name: Install Docker packages
+          dnf:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+            state: latest
+
+        - name: Install Python pip
+          dnf:
+            name: python3-pip
+            state: latest
+
+        - name: Install Docker Compose
+          pip:
+            name: docker-compose
+            executable: pip3
+
+        - name: Start and enable Docker service
+          systemd:
+            name: docker
+            state: started
+            enabled: yes
+      when: docker_result.stat.exists == False
+
+    - name: Check if /usr/bin/rke2 exists
+      stat:
+        path: /usr/bin/rke2
+      register: rke2_result
+
+    - name: Install RKE2
+      shell: |
+        curl -sfL https://rancher-mirror.rancher.cn/rke2/install.sh | INSTALL_RKE2_MIRROR=cn INSTALL_RKE2_VERSION={{ rke2_version }} sh -
+      args:
+        executable: /bin/bash
+      when: rke2_result.stat.exists == False
+
+    - name: Configure RKE2
+      copy:
+        content: |
+          service-node-port-range: {{ service_node_port_range }}
+          cni: {{ cni }}
+        dest: /etc/rancher/rke2/config.yaml
+
+    - name: Configure PATH
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+
+    - name: Configure crictl
+      block:
+        - name: Generate containerd configuration
+          command: containerd config default > /etc/containerd/config.toml
+
+        - name: Write crictl configuration
+          copy:
+            content: |
+              runtime-endpoint: unix:///run/k3s/containerd/containerd.sock
+              image-endpoint: unix:///run/k3s/containerd/containerd.sock
+              timeout: 10
+              debug: false
+            dest: /etc/crictl.yaml
+
+    - name: Enable RKE2 Server Service
+      systemd:
+        name: rke2-server.service
+        enabled: yes
+        state: started
+
+    - name: Prepare Kubectl
+      block:
+        - name: Install Kubectl
+          lineinfile:
+            path: /etc/profile
+            line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+
+        - name: Ensure destination directory exists
+          file:
+            path: "/home/{{ ansible_user }}/.kube"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            state: directory
+            mode: '0755'
+          become: yes
+
+        - name: Copy the Kubeconfig file
+          copy:
+            src: /etc/rancher/rke2/rke2.yaml
+            dest: "/home/{{ ansible_user }}/.kube/config"
+            remote_src: yes
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600'
+
+...
