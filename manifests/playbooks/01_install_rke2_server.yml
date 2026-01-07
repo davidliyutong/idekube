@@ -1,0 +1,200 @@
+---
+- hosts: all
+  become: yes
+  vars_prompt:
+    - name: "service_node_port_range"
+      prompt: "Enter service-node-port-range"
+      default: "30000-40000"
+      private: no
+
+    - name: "cni"
+      prompt: "Enter cni"
+      default: "cilium"
+      private: no
+
+    - name: "rke2_version"
+      prompt: "Enter RKE2 version"
+      default: "v1.33.1+rke2r1"
+      private: no
+
+    - name: "max_pods"
+      prompt: "Enter max pods per node"
+      default: "250"
+      private: no
+
+  tasks:
+    - name: Check operating system
+      fail:
+        msg: "This playbook can only be run on RedHat, CentOS, AlmaLinux or Rocky Linux."
+      when: ansible_distribution not in ['RedHat', 'CentOS', 'AlmaLinux', 'Rocky']
+
+    - name: Check if /usr/bin/docker exists
+      stat:
+        path: /usr/bin/docker
+      register: docker_result
+
+    - name: Install Docker
+      block:
+        - name: Check if Docker repo is reachable
+          shell:
+            cmd: curl -Is --max-time 5 https://download.docker.com/linux/centos/docker-ce.repo | head -n 1 | grep "200\|301"
+          register: repo_status
+          ignore_errors: true
+
+        - name: Add Docker repo
+          command: >
+            dnf config-manager --add-repo {{ 'https://download.docker.com/linux/centos/docker-ce.repo' if (repo_status.rc == 0) else 'https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo' }}
+
+        - name: Install Docker packages
+          dnf:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+            state: latest
+
+        - name: Install Python pip
+          dnf:
+            name: python3-pip
+            state: latest
+
+        - name: Install Docker Compose
+          pip:
+            name: docker-compose
+            executable: pip3
+
+        - name: Start and enable Docker service
+          systemd:
+            name: docker
+            state: started
+            enabled: yes
+      when: docker_result.stat.exists == False
+
+    - name: Check if /usr/bin/rke2 exists
+      stat:
+        path: /usr/bin/rke2
+      register: rke2_result
+
+    - name: Copy Air-Gap RKE2 files
+      block:
+        - name: Ensure /tmp/rke2-artifacts directory exists
+          file:
+            path: /tmp/rke2-artifacts
+            state: directory
+            mode: '0755'
+        - name: Copy RKE2 Binary
+          copy:
+            src: rke2.linux-arm64.tar.gz
+            dest: /tmp/rke2-artifacts/rke2.linux-arm64.tar.gz
+            mode: '0755'
+        - name: Copy RKE2 images archive
+          copy:
+            src: rke2-images.linux-arm64.tar.zst
+            dest: /tmp/rke2-artifacts/rke2-images.linux-arm64.tar.zst
+            mode: '0644'
+        - name: Copy RKE2 CNI images archive
+          copy:
+            src: rke2-images-{{ cni }}.linux-arm64.tar.zst
+            dest: /tmp/rke2-artifacts/rke2-images-{{ cni }}.linux-arm64.tar.zst
+            mode: '0644'
+        - name: Ensure /var/lib/rancher/rke2/agent/images directory exists
+          file:
+            path: /var/lib/rancher/rke2/agent/images
+            state: directory
+            mode: '0755'
+        - name: Copy RKE2 images archive to default path
+          copy:
+            src: /tmp/rke2-artifacts/rke2-images.linux-arm64.tar.zst
+            dest: /var/lib/rancher/rke2/agent/images/rke2-images.linux-arm64.tar.zst
+            remote_src: yes
+            mode: '0644'
+        - name: Copy RKE2 CNI images archive to default path
+          copy:
+            src: /tmp/rke2-artifacts/rke2-images-{{ cni }}.linux-arm64.tar.zst
+            dest: /var/lib/rancher/rke2/agent/images/rke2-images-{{ cni }}.linux-arm64.tar.zst
+            remote_src: yes
+            mode: '0644'
+        - name: Copy RKE2 install script
+          copy:
+            src: install.sh
+            dest: /tmp/rke2-artifacts/install.sh
+            mode: '0755'
+        - name: Copy RKE2 sha256sum file
+          copy:
+            src: sha256sum-arm64.txt
+            dest: /tmp/rke2-artifacts/sha256sum-arm64.txt
+            mode: '0755'
+      when: rke2_result.stat.exists == False
+
+    - name: Configure RKE2
+      block:
+        - name: Run RKE2 install script
+          shell: |
+            INSTALL_RKE2_ARTIFACT_PATH=/tmp/rke2-artifacts sh /tmp/rke2-artifacts/install.sh
+          when: rke2_result.stat.exists == False
+
+        - name: Ensure RKE2 configuration directory exists
+          file:
+            path: /etc/rancher/rke2
+            state: directory
+            mode: '0755'
+
+        - name: Write RKE2 server configuration
+          copy:
+            content: |
+              service-node-port-range: {{ service_node_port_range }}
+              cni: {{ cni }}
+              kubelet-arg: "--max-pods={{ max_pods }}"
+            dest: /etc/rancher/rke2/config.yaml
+            mode: '0644'
+
+    - name: Configure PATH
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+
+    - name: Configure crictl
+      block:
+        - name: Generate containerd configuration
+          command: containerd config default > /etc/containerd/config.toml
+
+        - name: Write crictl configuration
+          copy:
+            content: |
+              runtime-endpoint: unix:///run/k3s/containerd/containerd.sock
+              image-endpoint: unix:///run/k3s/containerd/containerd.sock
+              timeout: 10
+              debug: false
+            dest: /etc/crictl.yaml
+
+    - name: Enable RKE2 Server Service
+      systemd:
+        name: rke2-server.service
+        enabled: yes
+        state: started
+
+    - name: Prepare Kubectl
+      block:
+        - name: Install Kubectl
+          lineinfile:
+            path: /etc/profile
+            line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+
+        - name: Ensure destination directory exists
+          file:
+            path: "{{ kubeconfig_home }}/.kube"
+            owner: "{{ kubeconfig_owner }}"
+            group: "{{ kubeconfig_group }}"
+            state: directory
+            mode: '0755'
+          become: yes
+
+        - name: Copy the Kubeconfig file
+          copy:
+            src: /etc/rancher/rke2/rke2.yaml
+            dest: "{{ kubeconfig_home }}/.kube/config"
+            remote_src: yes
+            owner: "{{ kubeconfig_owner }}"
+            group: "{{ kubeconfig_group }}"
+            mode: '0600'
+...

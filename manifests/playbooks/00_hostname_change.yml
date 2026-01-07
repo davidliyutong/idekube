@@ -1,0 +1,29 @@
+## Ansible Playbook to install base packages and configure a Red Hat based server
+## This assumes you have SSH access to the target server(s) and Ansible installed on your control machine.
+## This assumes you are installing Rancher RKE2
+---
+- hosts: all
+  gather_facts: no
+  vars_prompt:
+    - name: "host"
+      prompt: "please enter the target hostname from: {{ ansible_play_hosts }}"
+      private: no
+  tasks:
+    - add_host:
+        name: "{{ host }}"
+        groups: chosen_host
+
+- name: The playbook for configuring the system
+  hosts: chosen_host
+  become: yes
+  vars_prompt:
+    - name: "new_hostname"
+      prompt: "Please enter the new hostname for the server or enter to skip."
+      private: no
+      default: ""
+
+  tasks:
+    - name: Set hostname permanently
+      hostname:
+        name: "{{ new_hostname }}"
+      when: new_hostname != ""

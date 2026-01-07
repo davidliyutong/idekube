@@ -1,0 +1,31 @@
+---
+- hosts: all
+  gather_facts: no
+  vars_prompt:
+    - name: "server_host"
+      prompt: "please enter the rke2 server hostname from: {{ ansible_play_hosts }}, this is the already installed server hostname"
+      private: no
+  tasks:
+    - add_host:
+        name: "{{ server_host }}"
+        groups: chosen_server_host
+
+- hosts: chosen_server_host
+  become: yes
+  tasks:
+    - name: Fetch the node token from the server
+      shell: cat /var/lib/rancher/rke2/server/node-token
+      register: token_result
+
+    - name: Save token to local file
+      delegate_to: localhost
+      become: no
+      copy:
+        content: "{{ token_result.stdout }}"
+        dest: "./rke2_node_token"
+        mode: '0600'
+
+    - name: Display token location
+      delegate_to: localhost
+      debug:
+        msg: "Token saved to ./rke2_node_token"

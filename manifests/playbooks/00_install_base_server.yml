@@ -2,40 +2,20 @@
 ## This assumes you have SSH access to the target server(s) and Ansible installed on your control machine.
 ## This assumes you are installing Rancher RKE2
 ---
-- hosts: all
-  gather_facts: no
-  vars_prompt:
-    - name: "host"
-      prompt: "please enter the target hostname from: {{ ansible_play_hosts }}"
-      private: no
-  tasks:
-    - add_host:
-        name: "{{ host }}"
-        groups: chosen_host
-
 - name: The playbook for configuring the system
-  hosts: chosen_host
+  hosts: all
   become: yes
   vars_prompt:
     - name: "use_external_containerd"
       prompt: "Do you want to use external containerd? (yes/no)"
       private: no
       default: "no"
-    - name: "new_hostname"
-      prompt: "Please enter the new hostname for the server or enter to skip."
-      private: no
-      default: ""
 
   tasks:
     - name: Check operating system
       fail:
-        msg: "This playbook can only be run on CentOS, AlmaLinux or Rocky Linux."
-      when: ansible_distribution not in ['CentOS', 'AlmaLinux', 'Rocky']
-
-    - name: Set hostname permanently
-      hostname:
-        name: "{{ new_hostname }}"
-      when: new_hostname != ""
+        msg: "This playbook can only be run on RedHat, CentOS, AlmaLinux or Rocky Linux."
+      when: ansible_distribution not in ['RedHat', 'CentOS', 'AlmaLinux', 'Rocky']
 
     - name: Disable SELinux
       block:
