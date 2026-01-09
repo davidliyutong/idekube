@@ -1,0 +1,2 @@
+docker.io/traefik:v3.6.5
+docker.io/traefik/whoami:v1.11.0

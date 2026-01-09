@@ -7,15 +7,16 @@ CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.19.2}"
 
 echo "Installing cert-manager ${CERT_MANAGER_VERSION}..."
 
-# Add cert-manager Helm repository
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
+# # Add cert-manager Helm repository
+# helm repo add jetstack https://charts.jetstack.io
+# helm repo update
 
 # Create namespace
 kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 
 # Install cert-manager with CRDs
-helm upgrade --install cert-manager jetstack/cert-manager \
+helm upgrade --install cert-manager cert-manager \
+  --repo https://charts.jetstack.io \
   --namespace ${NAMESPACE} \
   --version ${CERT_MANAGER_VERSION} \
   --set installCRDs=true \

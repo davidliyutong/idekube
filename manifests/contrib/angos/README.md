@@ -17,6 +17,8 @@ To generate a new Argon2 password hash for the registry authentication, use the 
 echo -n "yourpassword" | argon2 somesalt -e
 ```
 
+Use this value to override the value in `configmap-patch.yaml`
+
 ## Quick Commands
 
 ```bash
