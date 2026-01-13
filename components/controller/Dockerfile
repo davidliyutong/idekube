@@ -10,18 +10,27 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o controller ./cmd/controller
+# Build both the controller and migrate tool
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o idekube-controller ./cmd/controller
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o migrate ./cmd/migrate
 
 # Runtime stage
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates bash
 
-WORKDIR /root/
+WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /app/controller .
+# Copy binaries from builder
+COPY --from=builder /app/idekube-controller .
+COPY --from=builder /app/migrate .
 
-# Run the binary
-CMD ["./controller"]
+# Copy migrations directory
+COPY --from=builder /app/migrations ./migrations
+
+# Copy entrypoint script
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+# Use the entrypoint script
+ENTRYPOINT ["./entrypoint.sh"]

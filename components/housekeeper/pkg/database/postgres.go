@@ -1,29 +1,37 @@
 package database
 
 import (
-	"database/sql"
 	"fmt"
-	_ "github.com/lib/pq"
 	"github.com/davidliyutong/idekube-housekeeper/internal/config"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type PostgresClient struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 func NewPostgresClient(cfg config.PostgresConfig) (*PostgresClient, error) {
-	connStr := fmt.Sprintf(
+	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Database,
 	)
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Test connection
-	if err := db.Ping(); err != nil {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database instance: %w", err)
+	}
+	
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -31,16 +39,13 @@ func NewPostgresClient(cfg config.PostgresConfig) (*PostgresClient, error) {
 }
 
 func (c *PostgresClient) Close() error {
-	return c.db.Close()
+	sqlDB, err := c.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }
 
-func (c *PostgresClient) DB() *sql.DB {
+func (c *PostgresClient) DB() *gorm.DB {
 	return c.db
 }
-
-// TODO: Add database operation methods
-// Example:
-// func (c *PostgresClient) CreateResource(ctx context.Context, resource *Resource) error
-// func (c *PostgresClient) GetResource(ctx context.Context, id string) (*Resource, error)
-// func (c *PostgresClient) UpdateResource(ctx context.Context, resource *Resource) error
-// func (c *PostgresClient) DeleteResource(ctx context.Context, id string) error

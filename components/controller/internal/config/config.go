@@ -7,12 +7,15 @@ import (
 )
 
 type Config struct {
-	Kubeconfig   string
-	Namespace    string
-	Postgres     PostgresConfig
-	RabbitMQ     RabbitMQConfig
-	LogLevel     string
-	WorkerThreads int
+	Kubeconfig         string
+	Namespace          string
+	Postgres           PostgresConfig
+	RabbitMQ           RabbitMQConfig
+	LogLevel           string
+	WorkerThreads      int
+	ServerAddress      string
+	JWTSecret          string
+	JWTExpirationHours int
 }
 
 type PostgresConfig struct {
@@ -33,8 +36,11 @@ type RabbitMQConfig struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Kubeconfig: os.Getenv("KUBECONFIG"),
-		Namespace:  getEnvOrDefault("NAMESPACE", ""),
+		Kubeconfig:   os.Getenv("KUBECONFIG"),
+		Namespace:    getEnvOrDefault("NAMESPACE", ""),
+		ServerAddress: getEnvOrDefault("SERVER_ADDRESS", ":8080"),
+		JWTSecret:    getEnvOrDefault("JWT_SECRET", "change-me-in-production"),
+		JWTExpirationHours: getEnvAsIntOrDefault("JWT_EXPIRATION_HOURS", 24),
 		Postgres: PostgresConfig{
 			Host:     getEnvOrDefault("POSTGRES_HOST", "localhost"),
 			Port:     getEnvAsIntOrDefault("POSTGRES_PORT", 5432),

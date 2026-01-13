@@ -1,0 +1,64 @@
+package models
+
+import "time"
+
+// OIDCProvider represents an OIDC provider configuration
+type OIDCProvider struct {
+	ID           int64     `json:"id" gorm:"primaryKey"`
+	Name         string    `json:"name" gorm:"uniqueIndex;not null"`
+	IssuerURL    string    `json:"issuer_url" gorm:"not null"`
+	ClientID     string    `json:"client_id" gorm:"not null"`
+	ClientSecret string    `json:"-" gorm:"not null"` // Hidden from JSON
+	RedirectURL  string    `json:"redirect_url" gorm:"not null"`
+	Scopes       []string  `json:"scopes" gorm:"type:text[]"`
+	Enabled      bool      `json:"enabled" gorm:"default:true"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// TableName specifies the table name
+func (OIDCProvider) TableName() string {
+	return "oidc_providers"
+}
+
+// CreateOIDCProviderRequest represents request to create OIDC provider
+type CreateOIDCProviderRequest struct {
+	Name         string   `json:"name" binding:"required"`
+	IssuerURL    string   `json:"issuer_url" binding:"required"`
+	ClientID     string   `json:"client_id" binding:"required"`
+	ClientSecret string   `json:"client_secret" binding:"required"`
+	RedirectURL  string   `json:"redirect_url" binding:"required"`
+	Scopes       []string `json:"scopes"`
+}
+
+// UpdateOIDCProviderRequest represents request to update OIDC provider
+type UpdateOIDCProviderRequest struct {
+	IssuerURL    *string  `json:"issuer_url"`
+	ClientID     *string  `json:"client_id"`
+	ClientSecret *string  `json:"client_secret"`
+	RedirectURL  *string  `json:"redirect_url"`
+	Scopes       []string `json:"scopes"`
+	Enabled      *bool    `json:"enabled"`
+}
+
+// OAuthSession represents a temporary session (for OAuth state, tokens, etc.)
+type OAuthSession struct {
+	ID        int64     `json:"id" gorm:"primaryKey"`
+	Key       string    `json:"key" gorm:"uniqueIndex;not null"`
+	Value     string    `json:"value" gorm:"not null"`
+	ExpiresAt time.Time `json:"expires_at" gorm:"index"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TableName specifies the table name
+func (OAuthSession) TableName() string {
+	return "oauth_sessions"
+}
+
+// MFASetup represents MFA setup response
+type MFASetup struct {
+	Secret      string   `json:"secret"`
+	QRCode      string   `json:"qr_code"`
+	BackupCodes []string `json:"backup_codes"`
+}

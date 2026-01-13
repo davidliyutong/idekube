@@ -46,7 +46,10 @@ func main() {
 	defer mqClient.Close()
 
 	// Create RBAC service
-	rbacService := rbac.NewRBACService(k8sClient, db, mqClient, log)
+	rbacService, err := rbac.NewRBACService(cfg, k8sClient, db, mqClient, log)
+	if err != nil {
+		log.Fatalf("Failed to initialize RBAC service: %v", err)
+	}
 
 	// Setup context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

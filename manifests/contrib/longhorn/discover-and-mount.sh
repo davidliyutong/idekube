@@ -107,7 +107,7 @@ for disk in "${UNUSED_DISKS[@]}"; do
     fi
     
     dev_name=$(basename "$disk")
-    mount_point="/mnt/longhorn/${dev_name}-${uuid}"
+    mount_point="/mnt/longhorn/${dev_name}"
     
     if confirm "Mount $disk to $mount_point?"; then
         echo "Creating mount point $mount_point..."

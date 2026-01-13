@@ -13,6 +13,8 @@ type Config struct {
 	RabbitMQ     RabbitMQConfig
 	LogLevel     string
 	WorkerThreads int
+	HTTPPort     int
+	Casbin       CasbinConfig
 }
 
 type PostgresConfig struct {
@@ -29,6 +31,11 @@ type RabbitMQConfig struct {
 	User     string
 	Password string
 	VHost    string
+}
+
+type CasbinConfig struct {
+	ModelPath  string
+	PolicyPath string
 }
 
 func Load() (*Config, error) {
@@ -51,6 +58,11 @@ func Load() (*Config, error) {
 		},
 		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
 		WorkerThreads: getEnvAsIntOrDefault("WORKER_THREADS", 1),
+		HTTPPort:      getEnvAsIntOrDefault("HTTP_PORT", 8080),
+		Casbin: CasbinConfig{
+			ModelPath:  getEnvOrDefault("CASBIN_MODEL", "configs/model.conf"),
+			PolicyPath: getEnvOrDefault("CASBIN_POLICY", "configs/policy.csv"),
+		},
 	}
 
 	// Validate required fields

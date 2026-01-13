@@ -8,7 +8,9 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "lat
 
 # Build the application
 build:
+	@echo "Building ${APP_NAME}..."
 	go build -o bin/${APP_NAME} ./cmd/housekeeper
+	@echo "Build complete: bin/${APP_NAME}"
 
 # Run the application
 run:
@@ -17,6 +19,13 @@ run:
 # Run tests
 test:
 	go test -v ./...
+
+# Run tests with coverage
+test-coverage:
+	@echo "Running tests with coverage..."
+	@go test -v -coverprofile=coverage.out ./...
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
 
 # Clean build artifacts
 clean:
@@ -33,9 +42,27 @@ docker-push: docker-build
 
 # Run with hot reload (requires air)
 dev:
-	air
+	@echo "Starting development mode with hot reload..."
+	@air
 
 # Install dependencies
 deps:
-	go mod download
-	go mod tidy
+	@echo "Installing dependencies..."
+	@go mod download
+	@go mod tidy
+
+# Update dependencies
+deps-update:
+	@echo "Updating dependencies..."
+	@go get -u ./...
+	@go mod tidy
+
+# Format code
+fmt:
+	@echo "Formatting code..."
+	@go fmt ./...
+
+# Lint code (requires golangci-lint)
+lint:
+	@echo "Linting code..."
+	@golangci-lint run || true

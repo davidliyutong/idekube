@@ -29,3 +29,13 @@ go.work
 
 # Build output
 bin/
+
+# Generated files
+docs/swagger.json
+docs/swagger.yaml
+docs/docs.go
+client/
+
+# Coverage reports
+coverage.out
+coverage.html

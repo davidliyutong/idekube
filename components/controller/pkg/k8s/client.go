@@ -45,3 +45,24 @@ func (c *Client) Clientset() *kubernetes.Clientset {
 func (c *Client) Config() *rest.Config {
 	return c.config
 }
+
+// NewClientset creates a new Kubernetes clientset
+// This is a convenience function for direct clientset access
+func NewClientset(kubeconfig string) (*kubernetes.Clientset, error) {
+	var config *rest.Config
+	var err error
+
+	if kubeconfig != "" {
+		// Use out-of-cluster config
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+	} else {
+		// Use in-cluster config
+		config, err = rest.InClusterConfig()
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return kubernetes.NewForConfig(config)
+}

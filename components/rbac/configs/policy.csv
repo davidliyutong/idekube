@@ -1,0 +1,39 @@
+# Policy rules: p, subject, object, action
+# Role assignments: g, user, role
+
+# Super Admin role - full access
+p, role:super_admin, *, *
+
+# Admin role - manage specific resource types
+p, role:admin, workspace:*, *
+p, role:admin, template:*, *
+p, role:admin, volume:*, *
+p, role:admin, organization:*, *
+p, role:admin, user:*, read
+p, role:admin, user:*, write
+
+# Editor role - read and write permissions
+p, role:editor, workspace:*, read
+p, role:editor, workspace:*, write
+p, role:editor, workspace:*, execute
+p, role:editor, template:*, read
+p, role:editor, template:*, write
+p, role:editor, volume:*, read
+p, role:editor, volume:*, write
+
+# Viewer role - read only
+p, role:viewer, workspace:*, read
+p, role:viewer, template:*, read
+p, role:viewer, volume:*, read
+
+# Workspace Admin role
+p, role:workspace_admin, workspace:*, *
+
+# Template Admin role
+p, role:template_admin, template:*, *
+
+# Example user-role assignments (uncomment to use)
+# g, user:1, role:super_admin
+# g, user:2, role:admin
+# g, user:3, role:editor
+# g, user:4, role:viewer
