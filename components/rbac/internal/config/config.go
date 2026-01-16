@@ -7,14 +7,13 @@ import (
 )
 
 type Config struct {
-	Kubeconfig   string
-	Namespace    string
-	Postgres     PostgresConfig
-	RabbitMQ     RabbitMQConfig
-	LogLevel     string
+	Kubeconfig    string
+	Namespace     string
+	Postgres      PostgresConfig
+	LogLevel      string
 	WorkerThreads int
-	HTTPPort     int
-	Casbin       CasbinConfig
+	HTTPPort      int
+	OPA           OPAConfig
 }
 
 type PostgresConfig struct {
@@ -25,17 +24,9 @@ type PostgresConfig struct {
 	Database string
 }
 
-type RabbitMQConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	VHost    string
-}
-
-type CasbinConfig struct {
-	ModelPath  string
+type OPAConfig struct {
 	PolicyPath string
+	DataPath   string
 }
 
 func Load() (*Config, error) {
@@ -49,19 +40,12 @@ func Load() (*Config, error) {
 			Password: os.Getenv("POSTGRES_PASSWORD"),
 			Database: os.Getenv("POSTGRES_DB"),
 		},
-		RabbitMQ: RabbitMQConfig{
-			Host:     getEnvOrDefault("RABBITMQ_HOST", "localhost"),
-			Port:     getEnvAsIntOrDefault("RABBITMQ_PORT", 5672),
-			User:     os.Getenv("RABBITMQ_USER"),
-			Password: os.Getenv("RABBITMQ_PASSWORD"),
-			VHost:    getEnvOrDefault("RABBITMQ_VHOST", "/"),
-		},
 		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
 		WorkerThreads: getEnvAsIntOrDefault("WORKER_THREADS", 1),
 		HTTPPort:      getEnvAsIntOrDefault("HTTP_PORT", 8080),
-		Casbin: CasbinConfig{
-			ModelPath:  getEnvOrDefault("CASBIN_MODEL", "configs/model.conf"),
-			PolicyPath: getEnvOrDefault("CASBIN_POLICY", "configs/policy.csv"),
+		OPA: OPAConfig{
+			PolicyPath: getEnvOrDefault("OPA_POLICY", "configs/policy.rego"),
+			DataPath:   getEnvOrDefault("OPA_DATA", "configs/data.json"),
 		},
 	}
 
@@ -70,8 +54,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("PostgreSQL configuration is incomplete")
 	}
 
-	if cfg.RabbitMQ.User == "" || cfg.RabbitMQ.Password == "" {
-		return nil, fmt.Errorf("RabbitMQ configuration is incomplete")
+	if cfg.OPA.PolicyPath == "" {
+		return nil, fmt.Errorf("OPA configuration is incomplete")
 	}
 
 	return cfg, nil

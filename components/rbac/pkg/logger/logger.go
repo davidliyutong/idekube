@@ -1,62 +1,76 @@
 package logger
 
 import (
-	"log"
 	"os"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Logger struct {
-	info  *log.Logger
-	debug *log.Logger
-	warn  *log.Logger
-	error *log.Logger
+	zap *zap.SugaredLogger
 }
 
 func NewLogger() *Logger {
+	// Create encoder config
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "timestamp"
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+
+	// Create core with console output
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(encoderConfig),
+		zapcore.AddSync(os.Stdout),
+		zapcore.InfoLevel,
+	)
+
+	// Create logger
+	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	sugar := logger.Sugar()
+
 	return &Logger{
-		info:  log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile),
-		debug: log.New(os.Stdout, "DEBUG: ", log.Ldate|log.Ltime|log.Lshortfile),
-		warn:  log.New(os.Stdout, "WARN: ", log.Ldate|log.Ltime|log.Lshortfile),
-		error: log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile),
+		zap: sugar,
 	}
 }
 
 func (l *Logger) Info(v ...interface{}) {
-	l.info.Println(v...)
+	l.zap.Info(v...)
 }
 
 func (l *Logger) Infof(format string, v ...interface{}) {
-	l.info.Printf(format, v...)
+	l.zap.Infof(format, v...)
 }
 
 func (l *Logger) Debug(v ...interface{}) {
-	l.debug.Println(v...)
+	l.zap.Debug(v...)
 }
 
 func (l *Logger) Debugf(format string, v ...interface{}) {
-	l.debug.Printf(format, v...)
+	l.zap.Debugf(format, v...)
 }
 
 func (l *Logger) Warn(v ...interface{}) {
-	l.warn.Println(v...)
+	l.zap.Warn(v...)
 }
 
 func (l *Logger) Warnf(format string, v ...interface{}) {
-	l.warn.Printf(format, v...)
+	l.zap.Warnf(format, v...)
 }
 
 func (l *Logger) Error(v ...interface{}) {
-	l.error.Println(v...)
+	l.zap.Error(v...)
 }
 
 func (l *Logger) Errorf(format string, v ...interface{}) {
-	l.error.Printf(format, v...)
+	l.zap.Errorf(format, v...)
 }
 
 func (l *Logger) Fatal(v ...interface{}) {
-	l.error.Fatal(v...)
+	l.zap.Fatal(v...)
 }
 
 func (l *Logger) Fatalf(format string, v ...interface{}) {
-	l.error.Fatalf(format, v...)
+	l.zap.Fatalf(format, v...)
 }
+

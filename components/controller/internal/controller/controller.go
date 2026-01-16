@@ -6,22 +6,22 @@ import (
 
 	"github.com/davidliyutong/idekube-controller/pkg/database"
 	"github.com/davidliyutong/idekube-controller/pkg/k8s"
-	"github.com/davidliyutong/idekube-controller/pkg/logger"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
+	"go.uber.org/zap"
 )
 
 type Controller struct {
 	k8sClient *k8s.Client
 	db        *database.PostgresClient
 	mq        *queue.RabbitMQClient
-	log       *logger.Logger
+	log       *zap.Logger
 }
 
 func NewController(
 	k8sClient *k8s.Client,
 	db *database.PostgresClient,
 	mq *queue.RabbitMQClient,
-	log *logger.Logger,
+	log *zap.Logger,
 ) *Controller {
 	return &Controller{
 		k8sClient: k8sClient,

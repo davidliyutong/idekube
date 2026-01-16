@@ -31,7 +31,7 @@ func NewPostgresClient(cfg config.PostgresConfig) (*PostgresClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database instance: %w", err)
 	}
-	
+
 	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}

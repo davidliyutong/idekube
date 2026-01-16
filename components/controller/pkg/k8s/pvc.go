@@ -45,11 +45,11 @@ func (m *PVCManager) CreatePVC(ctx context.Context, volume *models.Volume) (stri
 			Name:      pvcName,
 			Namespace: m.namespace,
 			Labels: map[string]string{
-				"app":              "idekube",
-				"volume-id":        fmt.Sprintf("%d", volume.ID),
-				"volume-uuid":      volume.UUID.String(),
-				"owner-type":       string(volume.OwnerType),
-				"owner-id":         fmt.Sprintf("%d", volume.OwnerID),
+				"app":         "idekube",
+				"volume-id":   fmt.Sprintf("%d", volume.ID),
+				"volume-uuid": volume.UUID.String(),
+				"owner-type":  string(volume.OwnerType),
+				"owner-id":    fmt.Sprintf("%d", volume.OwnerID),
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{

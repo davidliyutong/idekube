@@ -23,20 +23,21 @@ func NewAPIKeyHandler(apiKeyService *services.APIKeyService) *APIKeyHandler {
 	}
 }
 
-// CreateAPIKey creates a new API key
-// POST /api/v1/api-keys
+// CreateAPIKey godoc
+// @Summary 创建API密钥
+// @Description 为当前用户创建新的API密钥
+// @Tags API密钥
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body object{name=string,scopes=[]string,expires_at=int64} true "API密钥创建请求"
+// @Success 201 {object} models.APIResponse{data=map[string]interface{}} "创建成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /api-keys [post]
 func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	var req struct {
 		Name      string   `json:"name" binding:"required"`
@@ -94,20 +95,21 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
-// GetAPIKey retrieves an API key
-// GET /api/v1/api-keys/:id
+// GetAPIKey godoc
+// @Summary 获取API密钥详情
+// @Description 根据ID获取API密钥的详细信息
+// @Tags API密钥
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "API密钥ID"
+// @Success 200 {object} models.APIResponse{data=models.APIKey} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "未找到"
+// @Router /api-keys/{id} [get]
 func (h *APIKeyHandler) GetAPIKey(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -140,20 +142,19 @@ func (h *APIKeyHandler) GetAPIKey(c *gin.Context) {
 	})
 }
 
-// ListAPIKeys lists all API keys
-// GET /api/v1/api-keys
+// ListAPIKeys godoc
+// @Summary 列出API密钥
+// @Description 获取当前用户的所有API密钥
+// @Tags API密钥
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} models.APIResponse{data=map[string]interface{}} "成功"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /api-keys [get]
 func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	apiKeys, err := h.apiKeyService.ListAPIKeys(c.Request.Context(), userID)
 	if err != nil {
@@ -177,20 +178,20 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 	})
 }
 
-// RevokeAPIKey revokes an API key
-// DELETE /api/v1/api-keys/:id
+// RevokeAPIKey godoc
+// @Summary 撤销API密钥
+// @Description 撤销指定的API密钥
+// @Tags API密钥
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "API密钥ID"
+// @Success 200 {object} models.APIResponse "撤销成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /api-keys/{id} [delete]
 func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

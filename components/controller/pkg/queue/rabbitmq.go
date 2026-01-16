@@ -3,8 +3,8 @@ package queue
 import (
 	"fmt"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/davidliyutong/idekube-controller/internal/config"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type RabbitMQClient struct {

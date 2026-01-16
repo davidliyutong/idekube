@@ -35,29 +35,8 @@ func NewTemplateHandler(templateService *services.TemplateService) *TemplateHand
 // @Failure 401 {object} models.APIResponse "未认证"
 // @Router /templates [post]
 func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
-
-	userRole, err := middleware.GetUserRole(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
+	userRole := middleware.MustGetUserRole(c)
 
 	var req models.CreateTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -91,8 +70,20 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 	})
 }
 
-// GetTemplate retrieves a template by ID
-// GET /api/v1/templates/:id
+// GetTemplate godoc
+// @Summary 获取模板详情
+// @Description 根据ID获取模板的详细信息
+// @Tags 模板
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "模板ID"
+// @Success 200 {object} models.APIResponse{data=models.Template} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 403 {object} models.APIResponse "权限不足"
+// @Failure 404 {object} models.APIResponse "模板不存在"
+// @Router /templates/{id} [get]
 func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -107,17 +98,7 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 		return
 	}
 
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	// Check access
 	hasAccess, err := h.templateService.CheckTemplateAccess(c.Request.Context(), id, userID)
@@ -150,31 +131,102 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 	})
 }
 
-// ListTemplates lists templates accessible to the current user
-// GET /api/v1/templates
+// ListTemplates godoc
+// @Summary 列出模板
+// @Description 根据用户权限列出可访问的模板
+// @Tags 模板
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param organization_id query int false "组织ID过滤"
+// @Param all query boolean false "管理员是否列出所有模板"
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(10)
+// @Success 200 {object} models.APIResponse{data=models.PaginatedResponse} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /templates [get]
 func (h *TemplateHandler) ListTemplates(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
+	userID := middleware.MustGetUserID(c)
+
+	userRole := models.UserRole(c.GetString("user_role"))
+
+	var opts models.ListOptions
+	if err := c.ShouldBindQuery(&opts); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
 			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid query parameters",
+				Details: err.Error(),
 			},
 		})
 		return
 	}
 
-	// Check if only public templates are requested
-	publicOnly := c.Query("public_only") == "true"
+	// Check if admin wants to list all templates
+	if userRole == models.UserRoleAdmin || userRole == models.UserRoleSuperAdmin {
+		listAll := c.Query("all") == "true"
+		if listAll {
+			templates, total, err := h.templateService.ListAllTemplates(c.Request.Context(), &opts)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, models.APIResponse{
+					Success: false,
+					Error: &models.APIError{
+						Code:    "INTERNAL_ERROR",
+						Message: "Failed to list templates",
+						Details: err.Error(),
+					},
+				})
+				return
+			}
 
-	var templates []*models.Template
-	if publicOnly {
-		templates, err = h.templateService.ListPublicTemplates(c.Request.Context())
-	} else {
-		templates, err = h.templateService.ListAccessibleTemplates(c.Request.Context(), userID)
+			totalPages := int(total) / opts.PageSize
+			if int(total)%opts.PageSize > 0 {
+				totalPages++
+			}
+
+			c.JSON(http.StatusOK, models.APIResponse{
+				Success: true,
+				Data: models.PaginatedResponse{
+					Items:      templates,
+					Total:      total,
+					Page:       opts.Page,
+					PageSize:   opts.PageSize,
+					TotalPages: totalPages,
+				},
+			})
+			return
+		}
 	}
 
+	// Parse optional organization_id
+	var orgIDs []int64
+	orgIDStr := c.Query("organization_id")
+	if orgIDStr != "" {
+		parsed, err := strconv.ParseInt(orgIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Error: &models.APIError{
+					Code:    "INVALID_REQUEST",
+					Message: "Invalid organization_id",
+				},
+			})
+			return
+		}
+		orgIDs = []int64{parsed}
+	}
+
+	// List templates based on user permissions
+	templates, total, err := h.templateService.ListTemplates(
+		c.Request.Context(),
+		userID,
+		userRole,
+		orgIDs,
+		&opts,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -187,14 +239,38 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 		return
 	}
 
+	totalPages := int(total) / opts.PageSize
+	if int(total)%opts.PageSize > 0 {
+		totalPages++
+	}
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data:    templates,
+		Data: models.PaginatedResponse{
+			Items:      templates,
+			Total:      total,
+			Page:       opts.Page,
+			PageSize:   opts.PageSize,
+			TotalPages: totalPages,
+		},
 	})
 }
 
-// UpdateTemplate updates a template
-// PUT /api/v1/templates/:id
+// UpdateTemplate godoc
+// @Summary 更新模板
+// @Description 更新模板配置信息
+// @Tags 模板
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "模板ID"
+// @Param request body models.UpdateTemplateRequest true "模板更新请求"
+// @Success 200 {object} models.APIResponse{data=models.Template} "更新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 403 {object} models.APIResponse "权限不足"
+// @Failure 404 {object} models.APIResponse "模板不存在"
+// @Router /templates/{id} [put]
 func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -209,29 +285,8 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 		return
 	}
 
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
-
-	userRole, err := middleware.GetUserRole(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
+	userRole := middleware.MustGetUserRole(c)
 
 	// Get template to check ownership
 	template, err := h.templateService.GetTemplate(c.Request.Context(), id)
@@ -297,8 +352,20 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 	})
 }
 
-// DeleteTemplate deletes a template
-// DELETE /api/v1/templates/:id
+// DeleteTemplate godoc
+// @Summary 删除模板
+// @Description 删除指定的模板
+// @Tags 模板
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "模板ID"
+// @Success 200 {object} models.APIResponse "删除成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 403 {object} models.APIResponse "权限不足"
+// @Failure 404 {object} models.APIResponse "模板不存在"
+// @Router /templates/{id} [delete]
 func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -313,29 +380,8 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 		return
 	}
 
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
-
-	userRole, err := middleware.GetUserRole(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: err.Error(),
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
+	userRole := middleware.MustGetUserRole(c)
 
 	// Get template to check ownership
 	template, err := h.templateService.GetTemplate(c.Request.Context(), id)

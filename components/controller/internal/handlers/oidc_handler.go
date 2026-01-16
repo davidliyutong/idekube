@@ -30,8 +30,16 @@ func NewOIDCHandler(
 	}
 }
 
-// InitiateLogin initiates OIDC login flow
-// GET /api/v1/auth/oidc/:provider/login
+// InitiateLogin godoc
+// @Summary 发起OIDC登录
+// @Description 发起OIDC认证流程，返回认证URL和state
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Param provider path string true "OIDC提供商名称"
+// @Success 200 {object} models.APIResponse{data=map[string]string} "成功返回认证URL"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Router /auth/oidc/{provider}/login [get]
 func (h *OIDCHandler) InitiateLogin(c *gin.Context) {
 	providerName := c.Param("provider")
 
@@ -57,8 +65,19 @@ func (h *OIDCHandler) InitiateLogin(c *gin.Context) {
 	})
 }
 
-// HandleCallback handles OIDC callback
-// GET /api/v1/auth/oidc/:provider/callback
+// HandleCallback godoc
+// @Summary 处理OIDC回调
+// @Description 处理OIDC认证提供商的回调，验证用户并返回JWT token
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Param provider path string true "OIDC提供商名称"
+// @Param state query string true "认证state参数"
+// @Param code query string true "认证code参数"
+// @Success 200 {object} models.APIResponse{data=map[string]interface{}} "认证成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /auth/oidc/{provider}/callback [get]
 func (h *OIDCHandler) HandleCallback(c *gin.Context) {
 	state := c.Query("state")
 	code := c.Query("code")
@@ -112,8 +131,18 @@ func (h *OIDCHandler) HandleCallback(c *gin.Context) {
 	})
 }
 
-// CreateProvider creates a new OIDC provider
-// POST /api/v1/auth/oidc/providers
+// CreateProvider godoc
+// @Summary 创建OIDC提供商
+// @Description 创建新的OIDC认证提供商配置
+// @Tags OIDC管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body models.CreateOIDCProviderRequest true "OIDC提供商创建请求"
+// @Success 201 {object} models.APIResponse{data=models.OIDCProvider} "创建成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /auth/oidc/providers [post]
 func (h *OIDCHandler) CreateProvider(c *gin.Context) {
 	var req models.CreateOIDCProviderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -147,8 +176,16 @@ func (h *OIDCHandler) CreateProvider(c *gin.Context) {
 	})
 }
 
-// ListProviders lists OIDC providers
-// GET /api/v1/auth/oidc/providers
+// ListProviders godoc
+// @Summary 列出OIDC提供商
+// @Description 获取所有OIDC认证提供商的列表
+// @Tags OIDC管理
+// @Accept json
+// @Produce json
+// @Param enabled_only query boolean false "仅显示已启用的提供商"
+// @Success 200 {object} models.APIResponse{data=[]models.OIDCProvider} "成功"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /auth/oidc/providers [get]
 func (h *OIDCHandler) ListProviders(c *gin.Context) {
 	enabledOnly := c.Query("enabled_only") == "true"
 
@@ -171,8 +208,19 @@ func (h *OIDCHandler) ListProviders(c *gin.Context) {
 	})
 }
 
-// UpdateProvider updates an OIDC provider
-// PUT /api/v1/auth/oidc/providers/:id
+// UpdateProvider godoc
+// @Summary 更新OIDC提供商
+// @Description 更新指定的OIDC认证提供商配置
+// @Tags OIDC管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "提供商ID"
+// @Param request body models.UpdateOIDCProviderRequest true "OIDC提供商更新请求"
+// @Success 200 {object} models.APIResponse{data=models.OIDCProvider} "更新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /auth/oidc/providers/{id} [put]
 func (h *OIDCHandler) UpdateProvider(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -219,8 +267,18 @@ func (h *OIDCHandler) UpdateProvider(c *gin.Context) {
 	})
 }
 
-// DeleteProvider deletes an OIDC provider
-// DELETE /api/v1/auth/oidc/providers/:id
+// DeleteProvider godoc
+// @Summary 删除OIDC提供商
+// @Description 删除指定的OIDC认证提供商
+// @Tags OIDC管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "提供商ID"
+// @Success 200 {object} models.APIResponse "删除成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /auth/oidc/providers/{id} [delete]
 func (h *OIDCHandler) DeleteProvider(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)

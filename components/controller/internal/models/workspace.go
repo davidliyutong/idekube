@@ -19,28 +19,31 @@ const (
 
 // Workspace represents a user workspace (IDE instance)
 type Workspace struct {
-	ID                 int64           `json:"id" db:"id"`
-	UUID               uuid.UUID       `json:"uuid" db:"uuid"`
-	Name               string          `json:"name" db:"name"`
-	DisplayName        *string         `json:"display_name,omitempty" db:"display_name"`
-	Description        *string         `json:"description,omitempty" db:"description"`
-	OwnerType          OwnerType       `json:"owner_type" db:"owner_type"`
-	OwnerID            int64           `json:"owner_id" db:"owner_id"`
-	TemplateID         int64           `json:"template_id" db:"template_id"`
-	CPUMillicores      int             `json:"cpu_millicores" db:"cpu_millicores"`
-	MemoryMB           int             `json:"memory_mb" db:"memory_mb"`
-	StorageMB          int             `json:"storage_mb" db:"storage_mb"`
-	CurrentStatus      WorkspaceStatus `json:"current_status" db:"current_status"`
-	TargetStatus       WorkspaceStatus `json:"target_status" db:"target_status"`
-	K8sNamespace       *string         `json:"k8s_namespace,omitempty" db:"k8s_namespace"`
-	K8sDeploymentName  *string         `json:"k8s_deployment_name,omitempty" db:"k8s_deployment_name"`
-	K8sServiceName     *string         `json:"k8s_service_name,omitempty" db:"k8s_service_name"`
-	CreatedBy          int64           `json:"created_by" db:"created_by"`
-	CreatedAt          time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt          time.Time       `json:"updated_at" db:"updated_at"`
-	StartedAt          *time.Time      `json:"started_at,omitempty" db:"started_at"`
-	AccessedAt         *time.Time      `json:"accessed_at,omitempty" db:"accessed_at"`
-	TimeoutSeconds     int             `json:"timeout_seconds" db:"timeout_seconds"`
+	ID                int64           `json:"id" db:"id"`
+	UUID              uuid.UUID       `json:"uuid" db:"uuid"`
+	Name              string          `json:"name" db:"name"`
+	DisplayName       *string         `json:"display_name,omitempty" db:"display_name"`
+	Description       *string         `json:"description,omitempty" db:"description"`
+	OwnerType         OwnerType       `json:"owner_type" db:"owner_type"`
+	OwnerID           int64           `json:"owner_id" db:"owner_id"`
+	TemplateID        int64           `json:"template_id" db:"template_id"`
+	CPUMillicores     int             `json:"cpu_millicores" db:"cpu_millicores"`
+	MemoryMB          int             `json:"memory_mb" db:"memory_mb"`
+	StorageMB         int             `json:"storage_mb" db:"storage_mb"`
+	CurrentStatus     WorkspaceStatus `json:"current_status" db:"current_status"`
+	TargetStatus      WorkspaceStatus `json:"target_status" db:"target_status"`
+	K8sNamespace      *string         `json:"k8s_namespace,omitempty" db:"k8s_namespace"`
+	K8sDeploymentName *string         `json:"k8s_deployment_name,omitempty" db:"k8s_deployment_name"`
+	K8sServiceName    *string         `json:"k8s_service_name,omitempty" db:"k8s_service_name"`
+	CreatedBy         int64           `json:"created_by" db:"created_by"`
+	Labels            ResourceLabels  `json:"labels,omitempty" db:"labels"`
+	OrganizationID    *int64          `json:"organization_id,omitempty" db:"organization_id"`
+	CreatedAt         time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at" db:"updated_at"`
+	StartedAt         *time.Time      `json:"started_at,omitempty" db:"started_at"`
+	AccessedAt        *time.Time      `json:"accessed_at,omitempty" db:"accessed_at"`
+	TimeoutSeconds    int             `json:"timeout_seconds" db:"timeout_seconds"`
+	DeletedAt         *time.Time      `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // WorkspaceVolume represents a volume attached to a workspace

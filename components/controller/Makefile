@@ -81,35 +81,33 @@ lint:
 	@golangci-lint run || true
 
 # Generate Swagger documentation
+API_GEN_DIR := ./docs/api
 swagger-gen:
 	@echo "Generating Swagger documentation..."
 	@which swag > /dev/null || go install github.com/swaggo/swag/cmd/swag@latest
-	@swag init -g cmd/controller/main.go -o ./docs --parseDependency --parseInternal
-	@echo "Swagger documentation generated in ./docs"
+	@swag init -g cmd/controller/main.go -o ${API_GEN_DIR} --parseDependency --parseInternal
+	@echo "Swagger documentation generated in ${API_GEN_DIR}"
 
 # Generate JavaScript client from Swagger spec
 swagger-js-client:
 	@echo "Generating JavaScript client from Swagger spec..."
 	@which swagger-codegen > /dev/null || (echo "Error: swagger-codegen not found. Install it first: brew install swagger-codegen" && exit 1)
-	@mkdir -p ./client-js
-	@swagger-codegen generate -i ./docs/swagger.json -l javascript -o ./client-js
-	@echo "JavaScript client generated in ./client-js"
+	@mkdir -p ${API_GEN_DIR}/client-js
+	@swagger-codegen generate -i ${API_GEN_DIR}/swagger.json -l javascript -o ${API_GEN_DIR}/client-js
+	@echo "JavaScript client generated in ${API_GEN_DIR}/client-js"
 
 # Alternative: Generate TypeScript client (using openapi-generator)
 swagger-ts-client:
 	@echo "Generating TypeScript client from Swagger spec..."
 	@which openapi-generator > /dev/null || (echo "Error: openapi-generator not found. Install it first: npm install -g @openapitools/openapi-generator-cli" && exit 1)
-	@mkdir -p ./client-ts
-	@openapi-generator generate -i ./docs/swagger.json -g typescript-fetch -o ./client-ts
-	@echo "TypeScript client generated in ./client-ts"
+	@mkdir -p ${API_GEN_DIR}/client-ts
+	@openapi-generator generate -i ${API_GEN_DIR}/swagger.json -g typescript-fetch -o ${API_GEN_DIR}/client-ts
+	@echo "TypeScript client generated in ${API_GEN_DIR}/client-ts"
 
 # Clean build artifacts
 clean:
 	rm -rf bin/
-	rm -rf docs/
-	rm -rf client-js/
-	rm -rf client-ts/
-
+	rm -rf ${API_GEN_DIR}/
 
 # Build Docker image
 docker-build:

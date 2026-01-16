@@ -6,18 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/casbin/casbin/v2"
-
+	"github.com/davidliyutong/idekube-rbac/internal/opa"
 	"github.com/davidliyutong/idekube-rbac/pkg/logger"
 )
 
-// PermissionService wraps Casbin enforcer operations and provides typed requests.
+// PermissionService wraps OPA enforcer operations and provides typed requests.
 type PermissionService struct {
-	enforcer *casbin.Enforcer
+	enforcer *opa.Enforcer
 	log      *logger.Logger
 }
 
-func NewPermissionService(enforcer *casbin.Enforcer, log *logger.Logger) *PermissionService {
+func NewPermissionService(enforcer *opa.Enforcer, log *logger.Logger) *PermissionService {
 	return &PermissionService{enforcer: enforcer, log: log}
 }
 
@@ -43,8 +42,11 @@ func (s *PermissionService) CheckPermission(ctx context.Context, req CheckPermis
 
 	subject := fmt.Sprintf("user:%d", req.UserID)
 	object := strings.TrimSpace(req.ResourceType)
-	if strings.TrimSpace(req.ResourceID) != "" {
-		object = fmt.Sprintf("%s:%s", req.ResourceType, req.ResourceID)
+	resourceID := strings.TrimSpace(req.ResourceID)
+
+	// Handle wildcard explicitly - "*" means check generic resource type permission
+	if resourceID != "" && resourceID != "*" {
+		object = fmt.Sprintf("%s:%s", req.ResourceType, resourceID)
 	}
 
 	allowed, err := s.enforcer.Enforce(subject, object, req.Action)
@@ -62,8 +64,8 @@ func (s *PermissionService) AssignRole(ctx context.Context, userID int64, role s
 		return errors.New("user_id and role are required")
 	}
 
-	if _, err := s.enforcer.AddRoleForUser(fmt.Sprintf("user:%d", userID), role); err != nil {
+	if err := s.enforcer.AddRoleForUser(fmt.Sprintf("user:%d", userID), role); err != nil {
 		return err
 	}
-	return s.enforcer.SavePolicy()
+	return nil
 }

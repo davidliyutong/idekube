@@ -6,12 +6,12 @@ Role-Based Access Control (RBAC) service for managing permission control in the 
 
 - ✅ Kubernetes CRD operation support
 - ✅ PostgreSQL integration
-- ✅ RabbitMQ message queue integration
-- ✅ Flexible permission engine based on Casbin
+- ✅ Flexible permission engine based on OPA (Open Policy Agent)
+- ✅ Rego policy language support
 - ✅ RESTful API
-- ✅ Swagger UI documentation
+- ✅ Structured logging (zap)
 - ✅ Cloud-native configuration (environment variables)
-- ✅ Golang client generation
+- ✅ Database migration tool
 
 ## Quick Start
 
@@ -34,8 +34,6 @@ make run
 ```
 
 The service will start at `http://localhost:8080`.
-
-Access Swagger UI: `http://localhost:8080/swagger/`
 
 ## Documentation
 

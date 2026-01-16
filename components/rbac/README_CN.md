@@ -6,12 +6,12 @@
 
 - ✅ Kubernetes CRD操作支持
 - ✅ PostgreSQL集成
-- ✅ RabbitMQ消息队列集成
-- ✅ 基于Casbin的灵活权限引擎
+- ✅ 基于OPA (Open Policy Agent)的灵活权限引擎
+- ✅ Rego策略语言支持
 - ✅ RESTful API
-- ✅ Swagger UI文档
+- ✅ 结构化日志（zap）
 - ✅ 云原生配置（环境变量）
-- ✅ Golang客户端生成
+- ✅ 数据库迁移工具
 
 ## 快速开始
 
@@ -34,8 +34,6 @@ make run
 ```
 
 服务将在 `http://localhost:8080` 启动。
-
-访问Swagger UI: `http://localhost:8080/swagger/`
 
 ## 文档
 

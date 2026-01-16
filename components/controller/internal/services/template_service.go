@@ -207,3 +207,24 @@ func (s *TemplateService) validateTemplateYAML(yamlContent string) error {
 
 	return nil
 }
+
+// ListTemplates lists templates based on user role and permissions
+func (s *TemplateService) ListTemplates(ctx context.Context, userID int64, userRole models.UserRole, orgIDs []int64, opts *models.ListOptions) ([]*models.Template, int64, error) {
+	switch userRole {
+	case models.UserRoleSuperAdmin, models.UserRoleAdmin:
+		// Admins can see all templates
+		return s.templateRepo.ListAll(ctx, opts)
+
+	case models.UserRolePowerUser, models.UserRoleUser:
+		// Regular users see public templates, their own templates, and org templates
+		return s.templateRepo.ListAccessibleByUser(ctx, userID, orgIDs, opts)
+
+	default:
+		return nil, 0, fmt.Errorf("unknown user role: %s", userRole)
+	}
+}
+
+// ListAllTemplates lists all templates (admin only)
+func (s *TemplateService) ListAllTemplates(ctx context.Context, opts *models.ListOptions) ([]*models.Template, int64, error) {
+	return s.templateRepo.ListAll(ctx, opts)
+}

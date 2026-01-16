@@ -64,7 +64,7 @@ func (s *MFAService) EnableMFA(ctx context.Context, userID int64) (*models.MFASe
 	secret := key.Secret()
 	user.MFASecret = &secret
 	user.MFABackupCodes = backupCodes
-	
+
 	// Don't enable yet - user needs to verify first
 	err = s.userRepo.Update(ctx, user)
 	if err != nil {

@@ -12,6 +12,7 @@ type UserRole string
 const (
 	UserRoleSuperAdmin UserRole = "super_admin"
 	UserRoleAdmin      UserRole = "admin"
+	UserRolePowerUser  UserRole = "power_user"
 	UserRoleUser       UserRole = "user"
 )
 
@@ -43,6 +44,7 @@ type User struct {
 	CreatedAt      time.Time              `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time              `json:"updated_at" db:"updated_at"`
 	LastLoginAt    *time.Time             `json:"last_login_at,omitempty" db:"last_login_at"`
+	DeletedAt      *time.Time             `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // CreateUserRequest represents the request to create a new user
@@ -82,4 +84,17 @@ type LoginResponse struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
 	User      *User     `json:"user"`
+}
+
+// UpdateUserProfileRequest represents the request for a user to update their own profile
+type UpdateUserProfileRequest struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	Email       *string `json:"email,omitempty" binding:"omitempty,email"`
+	AvatarURL   *string `json:"avatar_url,omitempty"`
+}
+
+// CheckUserExistsResponse represents the response for checking if a user exists
+type CheckUserExistsResponse struct {
+	Exists   bool   `json:"exists"`
+	Username string `json:"username"`
 }

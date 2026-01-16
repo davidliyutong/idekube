@@ -26,23 +26,23 @@ func (r *AuditLogRepository) Create(ctx context.Context, log *models.AuditLog) e
 func (r *AuditLogRepository) List(ctx context.Context, opts *models.ListOptions) ([]*models.AuditLog, int64, error) {
 	var logs []*models.AuditLog
 	var total int64
-	
+
 	// Count total
 	if err := r.db.WithContext(ctx).Model(&models.AuditLog{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	
+
 	// Get logs
 	offset := (opts.Page - 1) * opts.PageSize
 	err := r.db.WithContext(ctx).Order("created_at DESC").
 		Limit(opts.PageSize).
 		Offset(offset).
 		Find(&logs).Error
-	
+
 	if err != nil {
 		return nil, 0, err
 	}
-	
+
 	return logs, total, nil
 }
 
@@ -50,12 +50,12 @@ func (r *AuditLogRepository) List(ctx context.Context, opts *models.ListOptions)
 func (r *AuditLogRepository) ListByUser(ctx context.Context, userID int64, opts *models.ListOptions) ([]*models.AuditLog, int64, error) {
 	var logs []*models.AuditLog
 	var total int64
-	
+
 	// Count total
 	if err := r.db.WithContext(ctx).Model(&models.AuditLog{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	
+
 	// Get logs
 	offset := (opts.Page - 1) * opts.PageSize
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID).
@@ -63,11 +63,11 @@ func (r *AuditLogRepository) ListByUser(ctx context.Context, userID int64, opts 
 		Limit(opts.PageSize).
 		Offset(offset).
 		Find(&logs).Error
-	
+
 	if err != nil {
 		return nil, 0, err
 	}
-	
+
 	return logs, total, nil
 }
 
@@ -75,14 +75,14 @@ func (r *AuditLogRepository) ListByUser(ctx context.Context, userID int64, opts 
 func (r *AuditLogRepository) ListByResource(ctx context.Context, resourceType, resourceID string, opts *models.ListOptions) ([]*models.AuditLog, int64, error) {
 	var logs []*models.AuditLog
 	var total int64
-	
+
 	// Count total
 	if err := r.db.WithContext(ctx).Model(&models.AuditLog{}).
 		Where("resource_type = ? AND resource_id = ?", resourceType, resourceID).
 		Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	
+
 	// Get logs
 	offset := (opts.Page - 1) * opts.PageSize
 	err := r.db.WithContext(ctx).
@@ -91,10 +91,10 @@ func (r *AuditLogRepository) ListByResource(ctx context.Context, resourceType, r
 		Limit(opts.PageSize).
 		Offset(offset).
 		Find(&logs).Error
-	
+
 	if err != nil {
 		return nil, 0, err
 	}
-	
+
 	return logs, total, nil
 }

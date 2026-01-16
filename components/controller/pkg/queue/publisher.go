@@ -300,8 +300,55 @@ func (p *EventPublisher) PublishVolumeResize(ctx context.Context, volume *models
 	return nil
 }
 
+// PublishUserDelete publishes a user deletion event
+func (p *EventPublisher) PublishUserDelete(ctx context.Context, userID int64, username string) error {
+	event := &UserDeleteEvent{
+		Type:      EventTypeUserDelete,
+		UserID:    userID,
+		Username:  username,
+		Timestamp: time.Now(),
+	}
+
+	if err := p.publish(ctx, EventTypeUserDelete, event); err != nil {
+		p.logger.Error("Failed to publish user delete event",
+			zap.Int64("user_id", userID),
+			zap.Error(err))
+		return err
+	}
+
+	p.logger.Info("Published user delete event",
+		zap.Int64("user_id", userID),
+		zap.String("username", username))
+
+	return nil
+}
+
+// PublishOrganizationDelete publishes an organization deletion event
+func (p *EventPublisher) PublishOrganizationDelete(ctx context.Context, organizationID int64, name string) error {
+	event := &OrganizationDeleteEvent{
+		Type:           EventTypeOrganizationDelete,
+		OrganizationID: organizationID,
+		Name:           name,
+		Timestamp:      time.Now(),
+	}
+
+	if err := p.publish(ctx, EventTypeOrganizationDelete, event); err != nil {
+		p.logger.Error("Failed to publish organization delete event",
+			zap.Int64("organization_id", organizationID),
+			zap.Error(err))
+		return err
+	}
+
+	p.logger.Info("Published organization delete event",
+		zap.Int64("organization_id", organizationID),
+		zap.String("name", name))
+
+	return nil
+}
+
 // Close closes the publisher (currently no-op, managed by RabbitMQClient)
 func (p *EventPublisher) Close() error {
 	// RabbitMQClient handles the actual connection closing
 	return nil
 }
+

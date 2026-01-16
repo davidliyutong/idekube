@@ -20,8 +20,16 @@ func NewEmailHandler(emailService *services.EmailService) *EmailHandler {
 	}
 }
 
-// VerifyEmail verifies email with token
-// GET /api/v1/auth/verify-email?token=xxx
+// VerifyEmail godoc
+// @Summary 验证邮箱
+// @Description 使用token验证用户邮箱
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Param token query string true "验证token"
+// @Success 200 {object} models.APIResponse "验证成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Router /auth/verify-email [get]
 func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -54,8 +62,17 @@ func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 	})
 }
 
-// RequestPasswordReset requests password reset email
-// POST /api/v1/auth/request-password-reset
+// RequestPasswordReset godoc
+// @Summary 请求密码重置
+// @Description 发送密码重置邮件
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Param request body object{email=string} true "密码重置请求"
+// @Success 200 {object} models.APIResponse "请求已提交"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /auth/request-password-reset [post]
 func (h *EmailHandler) RequestPasswordReset(c *gin.Context) {
 	var req struct {
 		Email string `json:"email" binding:"required,email"`
@@ -92,8 +109,16 @@ func (h *EmailHandler) RequestPasswordReset(c *gin.Context) {
 	})
 }
 
-// ResetPassword resets password with token
-// POST /api/v1/auth/reset-password
+// ResetPassword godoc
+// @Summary 重置密码
+// @Description 使用token重置用户密码
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Param request body object{token=string,new_password=string} true "密码重置请求"
+// @Success 200 {object} models.APIResponse "重置成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Router /auth/reset-password [post]
 func (h *EmailHandler) ResetPassword(c *gin.Context) {
 	var req struct {
 		Token       string `json:"token" binding:"required"`

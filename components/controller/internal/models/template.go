@@ -6,24 +6,35 @@ import (
 	"github.com/google/uuid"
 )
 
+// TemplateVisibility represents template visibility level
+type TemplateVisibility string
+
+const (
+	TemplateVisibilityPublic       TemplateVisibility = "public"       // Everyone can see
+	TemplateVisibilityOrganization TemplateVisibility = "organization" // Organization members can see
+	TemplateVisibilityPrivate      TemplateVisibility = "private"      // Only owner can see
+)
+
 // Template represents a workspace template
 type Template struct {
-	ID                    int64     `json:"id" db:"id"`
-	UUID                  uuid.UUID `json:"uuid" db:"uuid"`
-	Name                  string    `json:"name" db:"name"`
-	DisplayName           *string   `json:"display_name,omitempty" db:"display_name"`
-	Description           *string   `json:"description,omitempty" db:"description"`
-	ImageRef              string    `json:"image_ref" db:"image_ref"`
-	TemplateYAML          string    `json:"template_yaml" db:"template_yaml"`
-	IconURL               *string   `json:"icon_url,omitempty" db:"icon_url"`
-	IsPublic              bool      `json:"is_public" db:"is_public"`
-	OwnerType             *string   `json:"owner_type,omitempty" db:"owner_type"` // NULL for system templates
-	OwnerID               *int64    `json:"owner_id,omitempty" db:"owner_id"`     // NULL for system templates
-	DefaultCPUMillicores  int       `json:"default_cpu_millicores" db:"default_cpu_millicores"`
-	DefaultMemoryMB       int       `json:"default_memory_mb" db:"default_memory_mb"`
-	DefaultStorageMB      int       `json:"default_storage_mb" db:"default_storage_mb"`
-	CreatedAt             time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at" db:"updated_at"`
+	ID                   int64              `json:"id" db:"id"`
+	UUID                 uuid.UUID          `json:"uuid" db:"uuid"`
+	Name                 string             `json:"name" db:"name"`
+	DisplayName          *string            `json:"display_name,omitempty" db:"display_name"`
+	Description          *string            `json:"description,omitempty" db:"description"`
+	ImageRef             string             `json:"image_ref" db:"image_ref"`
+	TemplateYAML         string             `json:"template_yaml" db:"template_yaml"`
+	IconURL              *string            `json:"icon_url,omitempty" db:"icon_url"`
+	IsPublic             bool               `json:"is_public" db:"is_public"`
+	OwnerType            *string            `json:"owner_type,omitempty" db:"owner_type"` // NULL for system templates
+	OwnerID              *int64             `json:"owner_id,omitempty" db:"owner_id"`     // NULL for system templates
+	DefaultCPUMillicores int                `json:"default_cpu_millicores" db:"default_cpu_millicores"`
+	DefaultMemoryMB      int                `json:"default_memory_mb" db:"default_memory_mb"`
+	DefaultStorageMB     int                `json:"default_storage_mb" db:"default_storage_mb"`
+	Labels               ResourceLabels     `json:"labels,omitempty" db:"labels"`
+	Visibility           TemplateVisibility `json:"visibility" db:"visibility"`
+	CreatedAt            time.Time          `json:"created_at" db:"created_at"`
+	UpdatedAt            time.Time          `json:"updated_at" db:"updated_at"`
 }
 
 // CreateTemplateRequest represents the request to create a template

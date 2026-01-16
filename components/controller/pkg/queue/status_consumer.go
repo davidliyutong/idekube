@@ -47,13 +47,13 @@ func (c *StatusConsumer) Start(ctx context.Context) error {
 
 	// Start consuming
 	msgs, err := channel.Consume(
-		QueueControllerStatus, // queue
+		QueueControllerStatus,        // queue
 		"controller-status-consumer", // consumer tag
-		false, // auto-ack
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
-		nil,   // args
+		false,                        // auto-ack
+		false,                        // exclusive
+		false,                        // no-local
+		false,                        // no-wait
+		nil,                          // args
 	)
 	if err != nil {
 		return fmt.Errorf("failed to start consuming: %w", err)

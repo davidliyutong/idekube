@@ -22,7 +22,8 @@ CREATE TABLE users (
     mfa_backup_codes TEXT[],
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    last_login_at TIMESTAMP WITH TIME ZONE
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX idx_users_username ON users(username);
@@ -31,6 +32,7 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_users_email_verified ON users(email_verified);
 CREATE INDEX idx_users_mfa_enabled ON users(mfa_enabled);
+CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 
 -- Organizations table
 CREATE TABLE organizations (
@@ -43,11 +45,13 @@ CREATE TABLE organizations (
     owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     settings JSONB,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX idx_organizations_name ON organizations(name);
 CREATE INDEX idx_organizations_owner_id ON organizations(owner_id);
+CREATE INDEX idx_organizations_deleted_at ON organizations(deleted_at);
 
 -- Organization members table
 CREATE TABLE organization_members (
@@ -96,6 +100,8 @@ CREATE TABLE templates (
     default_cpu_millicores INT NOT NULL DEFAULT 1000,
     default_memory_mb INT NOT NULL DEFAULT 2048,
     default_storage_mb INT NOT NULL DEFAULT 10240,
+    labels JSONB,
+    visibility VARCHAR(20) NOT NULL DEFAULT 'private', -- public, organization, private
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -118,11 +124,14 @@ CREATE TABLE volumes (
     access_mode VARCHAR(50) NOT NULL DEFAULT 'ReadWriteOnce',
     pvc_name VARCHAR(255),
     status VARCHAR(50) NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    labels JSONB,
+    deleted_at TIMESTAMP WITH TIME ZONE,
     UNIQUE(owner_type, owner_id, name)
 );
 
+CREATE INDEX idx_volumes_owner ON volumes(owner_type, owner_id);
+CREATE INDEX idx_volumes_status ON volumes(status);
+CREATE INDEX idx_volumes_deleted_at ON volumes(deleted_at
 CREATE INDEX idx_volumes_owner ON volumes(owner_type, owner_id);
 CREATE INDEX idx_volumes_status ON volumes(status);
 
@@ -145,16 +154,20 @@ CREATE TABLE workspaces (
     k8s_deployment_name VARCHAR(255),
     k8s_service_name VARCHAR(255),
     created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    labels JSONB,
+    organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     started_at TIMESTAMP WITH TIME ZONE,
-    accessed_at TIMESTAMP WITH TIME ZONE,
-    timeout_seconds INT NOT NULL DEFAULT 3600,
+    deleted_at TIMESTAMP WITH TIME ZONE,
     UNIQUE(owner_type, owner_id, name)
 );
 
 CREATE INDEX idx_workspaces_owner ON workspaces(owner_type, owner_id);
 CREATE INDEX idx_workspaces_status ON workspaces(current_status);
+CREATE INDEX idx_workspaces_template_id ON workspaces(template_id);
+CREATE INDEX idx_workspaces_created_by ON workspaces(created_by);
+CREATE INDEX idx_workspaces_deleted_at ON workspaces(deleted_at);
 CREATE INDEX idx_workspaces_template_id ON workspaces(template_id);
 CREATE INDEX idx_workspaces_created_by ON workspaces(created_by);
 
@@ -306,10 +319,5 @@ CREATE TRIGGER update_webhooks_updated_at BEFORE UPDATE ON webhooks
 CREATE TRIGGER update_oauth_sessions_updated_at BEFORE UPDATE ON oauth_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert default super admin user (password: admin123, should be changed!)
-INSERT INTO users (username, email, password_hash, role, display_name)
-VALUES ('admin', 'admin@idekube.local', '$2a$10$rQ3lVJ5F5F5F5F5F5F5F5OqKqKqKqKqKqKqKqKqKqKqKqKqKqK', 'super_admin', 'System Administrator');
-
--- Insert default quota for admin user
-INSERT INTO quotas (owner_type, owner_id, cpu_millicores, memory_mb, storage_mb, max_workspaces, max_volumes)
-VALUES ('user', 1, 32000, 65536, 204800, 50, 50);
+-- Note: Admin user will be created automatically by the application
+-- if ADMIN_PASSWORD environment variable is set

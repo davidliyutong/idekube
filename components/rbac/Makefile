@@ -12,6 +12,15 @@ build:
 	go build -o bin/${APP_NAME} ./cmd/rbac
 	@echo "Build complete: bin/${APP_NAME}"
 
+# Build migrate tool
+build-migrate:
+	@echo "Building migrate tool..."
+	go build -o bin/${APP_NAME}-migrate ./cmd/migrate
+	@echo "Build complete: bin/${APP_NAME}-migrate"
+
+# Build all binaries
+build-all: build build-migrate
+
 # Run the application
 run:
 	go run ./cmd/rbac
@@ -66,23 +75,62 @@ fmt:
 lint:
 	@echo "Linting code..."
 	@golangci-lint run || true
+
+API_GEN_DIR := ./docs/api
+
 # Generate swagger documentation
 swagger-gen:
 	@echo "Generating swagger documentation..."
 	@which swag > /dev/null || (echo "swag not found. Installing..." && go install github.com/swaggo/swag/cmd/swag@latest)
-	@swag init -g internal/api/server.go -o docs --parseDependency --parseInternal
-	@echo "Swagger docs generated in docs/"
+	@swag init -g internal/api/server.go -o ${API_GEN_DIR} --parseDependency --parseInternal
+	@echo "Swagger docs generated in ${API_GEN_DIR}"
 
 # Generate golang client for controller
 client-gen:
 	@echo "Generating golang client..."
-	@mkdir -p client
+	@mkdir -p ${API_GEN_DIR}/client
 	@which oapi-codegen > /dev/null || (echo "oapi-codegen not found. Installing..." && go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest)
 	@echo "Converting swagger.json to OpenAPI 3.0..."
-	@oapi-codegen -package client -generate types,client -o client/client.go docs/swagger.json
-	@echo "Golang client generated in client/"
+	@oapi-codegen -package client -generate types,client -o ${API_GEN_DIR}/client/client.go ${API_GEN_DIR}/swagger.json
+	@echo "Golang client generated in ${API_GEN_DIR}/client/"
 
 # View swagger docs (starts local server)
 swagger-serve:
 	@echo "Serving swagger docs at http://localhost:8080/swagger/"
 	@echo "Make sure to build and run the application first with: make run"
+
+# Database migrations
+migrate-up:
+	@echo "Running database migrations..."
+	@go run ./cmd/migrate -action up -path ./migrations
+
+migrate-down:
+	@echo "Rolling back last migration..."
+	@go run ./cmd/migrate -action down -path ./migrations
+
+migrate-version:
+	@echo "Checking migration version..."
+	@go run ./cmd/migrate -action version -path ./migrations
+
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  build           - Build the RBAC service binary"
+	@echo "  build-migrate   - Build the migration tool binary"
+	@echo "  build-all       - Build all binaries"
+	@echo "  run             - Run the RBAC service"
+	@echo "  test            - Run tests"
+	@echo "  test-coverage   - Run tests with coverage report"
+	@echo "  clean           - Clean build artifacts"
+	@echo "  docker-build    - Build Docker image"
+	@echo "  docker-push     - Build and push Docker image"
+	@echo "  dev             - Run with hot reload (requires air)"
+	@echo "  deps            - Download dependencies"
+	@echo "  deps-update     - Update dependencies"
+	@echo "  fmt             - Format code"
+	@echo "  lint            - Lint code (requires golangci-lint)"
+	@echo "  swagger-gen     - Generate swagger documentation"
+	@echo "  migrate-up      - Run database migrations"
+	@echo "  migrate-down    - Rollback last migration"
+	@echo "  migrate-version - Check migration version"
+	@echo "  help            - Show this help message"

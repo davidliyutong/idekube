@@ -23,20 +23,21 @@ func NewWebhookHandler(webhookService *services.WebhookService) *WebhookHandler 
 	}
 }
 
-// CreateWebhook creates a new webhook
-// POST /api/v1/webhooks
+// CreateWebhook godoc
+// @Summary 创建Webhook
+// @Description 创建新的Webhook订阅
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body models.Webhook true "Webhook创建请求"
+// @Success 201 {object} models.APIResponse{data=models.Webhook} "创建成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /webhooks [post]
 func (h *WebhookHandler) CreateWebhook(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	var webhook models.Webhook
 	if err := c.ShouldBindJSON(&webhook); err != nil {
@@ -51,7 +52,7 @@ func (h *WebhookHandler) CreateWebhook(c *gin.Context) {
 		return
 	}
 
-	err = h.webhookService.CreateWebhook(c.Request.Context(), userID, &webhook)
+	err := h.webhookService.CreateWebhook(c.Request.Context(), userID, &webhook)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -71,20 +72,21 @@ func (h *WebhookHandler) CreateWebhook(c *gin.Context) {
 	})
 }
 
-// GetWebhook retrieves a webhook
-// GET /api/v1/webhooks/:id
+// GetWebhook godoc
+// @Summary 获取Webhook详情
+// @Description 根据ID获取Webhook的详细信息
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "WebhookID"
+// @Success 200 {object} models.APIResponse{data=models.Webhook} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "未找到"
+// @Router /webhooks/{id} [get]
 func (h *WebhookHandler) GetWebhook(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -117,20 +119,20 @@ func (h *WebhookHandler) GetWebhook(c *gin.Context) {
 	})
 }
 
-// ListWebhooks lists all webhooks
-// GET /api/v1/webhooks?events=workspace.created,workspace.deleted
+// ListWebhooks godoc
+// @Summary 列出Webhook
+// @Description 获取用户的所有Webhook
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param events query string false "事件类型过滤，逗号分隔"
+// @Success 200 {object} models.APIResponse{data=map[string]interface{}} "成功"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /webhooks [get]
 func (h *WebhookHandler) ListWebhooks(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	eventsStr := c.Query("events")
 	var events []string
@@ -160,20 +162,22 @@ func (h *WebhookHandler) ListWebhooks(c *gin.Context) {
 	})
 }
 
-// UpdateWebhook updates a webhook
-// PUT /api/v1/webhooks/:id
+// UpdateWebhook godoc
+// @Summary 更新Webhook
+// @Description 更新指定的Webhook配置
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "WebhookID"
+// @Param request body map[string]interface{} true "Webhook更新请求"
+// @Success 200 {object} models.APIResponse "更新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /webhooks/{id} [put]
 func (h *WebhookHandler) UpdateWebhook(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -219,20 +223,21 @@ func (h *WebhookHandler) UpdateWebhook(c *gin.Context) {
 	})
 }
 
-// DeleteWebhook deletes a webhook
-// DELETE /api/v1/webhooks/:id
+// DeleteWebhook godoc
+// @Summary 删除Webhook
+// @Description 删除指定的Webhook
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "WebhookID"
+// @Success 200 {object} models.APIResponse "删除成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /webhooks/{id} [delete]
 func (h *WebhookHandler) DeleteWebhook(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -265,20 +270,20 @@ func (h *WebhookHandler) DeleteWebhook(c *gin.Context) {
 	})
 }
 
-// TestWebhook tests a webhook
-// POST /api/v1/webhooks/:id/test
+// TestWebhook godoc
+// @Summary 测试Webhook
+// @Description 发送测试事件到Webhook
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "WebhookID"
+// @Success 200 {object} models.APIResponse "测试成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /webhooks/{id}/test [post]
 func (h *WebhookHandler) TestWebhook(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		return
-	}
+	userID := middleware.MustGetUserID(c)
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

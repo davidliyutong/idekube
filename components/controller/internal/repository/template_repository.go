@@ -80,14 +80,118 @@ func (r *TemplateRepository) ListByOwner(ctx context.Context, ownerType models.O
 // ListAccessible lists all templates accessible to a user (public + owned)
 func (r *TemplateRepository) ListAccessible(ctx context.Context, userID int64, orgIDs []int64) ([]*models.Template, error) {
 	var templates []*models.Template
-	
+
 	query := r.db.WithContext(ctx).Where("is_public = ?", true).
 		Or("owner_type = ? AND owner_id = ?", "user", userID)
-	
+
 	if len(orgIDs) > 0 {
 		query = query.Or("owner_type = ? AND owner_id IN ?", "organization", orgIDs)
 	}
-	
+
 	err := query.Order("created_at DESC").Find(&templates).Error
 	return templates, err
+}
+
+// ListAll retrieves all templates (for admin) with pagination
+func (r *TemplateRepository) ListAll(ctx context.Context, opts *models.ListOptions) ([]*models.Template, int64, error) {
+	var templates []*models.Template
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Template{})
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get templates with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&templates).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return templates, total, nil
+}
+
+// ListAccessibleByUser lists templates accessible to a user with pagination
+func (r *TemplateRepository) ListAccessibleByUser(ctx context.Context, userID int64, orgIDs []int64, opts *models.ListOptions) ([]*models.Template, int64, error) {
+	var templates []*models.Template
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Template{}).
+		Where("visibility = ?", models.TemplateVisibilityPublic).
+		Or("(owner_type = ? AND owner_id = ?)", models.OwnerTypeUser, userID)
+
+	if len(orgIDs) > 0 {
+		query = query.Or("(visibility = ? AND owner_type = ? AND owner_id IN ?)",
+			models.TemplateVisibilityOrganization, models.OwnerTypeOrganization, orgIDs)
+	}
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get templates with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&templates).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return templates, total, nil
+}
+
+// ListByVisibility lists templates by visibility level with pagination
+func (r *TemplateRepository) ListByVisibility(ctx context.Context, visibility models.TemplateVisibility, opts *models.ListOptions) ([]*models.Template, int64, error) {
+	var templates []*models.Template
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Template{}).
+		Where("visibility = ?", visibility)
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get templates with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&templates).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return templates, total, nil
 }

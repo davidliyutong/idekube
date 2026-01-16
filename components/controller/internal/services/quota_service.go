@@ -30,12 +30,12 @@ func NewQuotaService(
 
 // QuotaUsage represents current resource usage
 type QuotaUsage struct {
-	CPUMillicores int `json:"cpu_millicores"`
-	MemoryMB      int `json:"memory_mb"`
-	StorageMB     int `json:"storage_mb"`
-	GPUCount      int `json:"gpu_count"`
+	CPUMillicores  int `json:"cpu_millicores"`
+	MemoryMB       int `json:"memory_mb"`
+	StorageMB      int `json:"storage_mb"`
+	GPUCount       int `json:"gpu_count"`
 	WorkspaceCount int `json:"workspace_count"`
-	VolumeCount   int `json:"volume_count"`
+	VolumeCount    int `json:"volume_count"`
 }
 
 // GetQuotaUsage calculates current resource usage for an owner

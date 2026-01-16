@@ -4,27 +4,19 @@ import (
 	"time"
 )
 
-// OwnerType represents the type of resource owner
-type OwnerType string
-
-const (
-	OwnerTypeUser         OwnerType = "user"
-	OwnerTypeOrganization OwnerType = "organization"
-)
-
 // Quota represents resource quotas
 type Quota struct {
-	ID                int64      `json:"id" gorm:"primaryKey"`
-	OwnerType         OwnerType  `json:"owner_type" gorm:"type:varchar(50);not null"`
-	OwnerID           int64      `json:"owner_id" gorm:"not null"`
-	MaxCPUMillicores  *int       `json:"max_cpu_millicores" gorm:"column:cpu_millicores;default:8000"`
-	MaxMemoryMB       *int       `json:"max_memory_mb" gorm:"column:memory_mb;default:16384"`
-	MaxStorageMB      *int       `json:"max_storage_mb" gorm:"column:storage_mb;default:51200"`
-	MaxGPU            *int       `json:"max_gpu" gorm:"column:gpu_count;default:0"`
-	MaxWorkspaces     *int       `json:"max_workspaces" gorm:"default:10"`
-	MaxVolumes        *int       `json:"max_volumes" gorm:"default:20"`
-	CreatedAt         time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt         time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	ID               int64     `json:"id" gorm:"primaryKey"`
+	OwnerType        OwnerType `json:"owner_type" gorm:"type:varchar(50);not null"`
+	OwnerID          int64     `json:"owner_id" gorm:"not null"`
+	MaxCPUMillicores *int      `json:"max_cpu_millicores" gorm:"column:cpu_millicores;default:8000"`
+	MaxMemoryMB      *int      `json:"max_memory_mb" gorm:"column:memory_mb;default:16384"`
+	MaxStorageMB     *int      `json:"max_storage_mb" gorm:"column:storage_mb;default:51200"`
+	MaxGPU           *int      `json:"max_gpu" gorm:"column:gpu_count;default:0"`
+	MaxWorkspaces    *int      `json:"max_workspaces" gorm:"default:10"`
+	MaxVolumes       *int      `json:"max_volumes" gorm:"default:20"`
+	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt        time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (Quota) TableName() string {

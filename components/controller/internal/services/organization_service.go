@@ -7,23 +7,31 @@ import (
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
+	"github.com/davidliyutong/idekube-controller/pkg/queue"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // OrganizationService handles organization business logic
 type OrganizationService struct {
-	orgRepo  *repository.OrganizationRepository
-	userRepo *repository.UserRepository
+	orgRepo        *repository.OrganizationRepository
+	userRepo       *repository.UserRepository
+	userService    *UserService
+	eventPublisher *queue.EventPublisher
 }
 
 // NewOrganizationService creates a new organization service
 func NewOrganizationService(
 	orgRepo *repository.OrganizationRepository,
 	userRepo *repository.UserRepository,
+	userService *UserService,
+	eventPublisher *queue.EventPublisher,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:  orgRepo,
-		userRepo: userRepo,
+		orgRepo:        orgRepo,
+		userRepo:       userRepo,
+		userService:    userService,
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -138,9 +146,32 @@ func (s *OrganizationService) UpdateOrganization(ctx context.Context, id int64, 
 	return org, nil
 }
 
-// DeleteOrganization deletes an organization
+// DeleteOrganization deletes an organization and publishes event for K8S cleanup
 func (s *OrganizationService) DeleteOrganization(ctx context.Context, id int64) error {
-	return s.orgRepo.Delete(ctx, id)
+	// Get organization info before deletion
+	org, err := s.orgRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Soft delete the organization
+	err = s.orgRepo.Delete(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Publish delete event to HouseKeeper for K8S resource cleanup
+	if s.eventPublisher != nil {
+		if err := s.eventPublisher.PublishOrganizationDelete(ctx, id, org.Name); err != nil {
+			// Log error but don't fail the operation
+			// HouseKeeper reconciler will handle cleanup eventually
+			zap.L().Error("Failed to publish organization delete event",
+				zap.Int64("organization_id", id),
+				zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 // AddMember adds a member to an organization
@@ -228,4 +259,72 @@ func (s *OrganizationService) CheckMemberPermission(ctx context.Context, orgID, 
 	}
 
 	return roleLevel[member.Role] >= roleLevel[requiredRole], nil
+}
+
+// ListAllOrganizations lists all organizations (admin only)
+func (s *OrganizationService) ListAllOrganizations(ctx context.Context, opts *models.ListOptions) ([]*models.Organization, int64, error) {
+	return s.orgRepo.ListAll(ctx, opts)
+}
+
+// PromoteToAdmin promotes a member to admin role (owner only)
+func (s *OrganizationService) PromoteToAdmin(ctx context.Context, orgID, targetUserID, actorUserID int64) error {
+	// Verify actor is owner
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return err
+	}
+
+	if org.OwnerID != actorUserID {
+		return fmt.Errorf("only organization owner can promote members to admin")
+	}
+
+	// Check target user is not already owner
+	if org.OwnerID == targetUserID {
+		return fmt.Errorf("user is already the owner")
+	}
+
+	// Update role
+	return s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleAdmin)
+}
+
+// DemoteFromAdmin demotes an admin to member role (owner only)
+func (s *OrganizationService) DemoteFromAdmin(ctx context.Context, orgID, targetUserID, actorUserID int64) error {
+	// Verify actor is owner
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return err
+	}
+
+	if org.OwnerID != actorUserID {
+		return fmt.Errorf("only organization owner can demote admins")
+	}
+
+	// Check target user is not owner
+	if org.OwnerID == targetUserID {
+		return fmt.Errorf("cannot demote the owner")
+	}
+
+	// Update role
+	return s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleMember)
+}
+
+// GetUserOrganizationRole gets user's role in an organization
+func (s *OrganizationService) GetUserOrganizationRole(ctx context.Context, userID, orgID int64) (models.OrganizationMemberRole, error) {
+	return s.orgRepo.GetUserOrganizationRole(ctx, userID, orgID)
+}
+
+// SearchUsersForInvite searches users for organization invitation
+func (s *OrganizationService) SearchUsersForInvite(ctx context.Context, orgID int64, query string, opts *models.ListOptions) ([]*models.User, int64, error) {
+	// Verify organization exists
+	_, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("organization not found: %w", err)
+	}
+
+	// Search users using UserService
+	if s.userService == nil {
+		return nil, 0, fmt.Errorf("user service not available")
+	}
+
+	return s.userService.SearchUsers(ctx, query, opts)
 }

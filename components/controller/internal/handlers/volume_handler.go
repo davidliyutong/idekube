@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
 	"github.com/davidliyutong/idekube-controller/internal/services"
 	"github.com/gin-gonic/gin"
@@ -111,36 +112,91 @@ func (h *VolumeHandler) GetVolume(c *gin.Context) {
 	})
 }
 
-// ListVolumes lists volumes by owner
-// GET /api/v1/volumes?owner_type=user&owner_id=1
+// ListVolumes godoc
+// @Summary 列出存储卷
+// @Description 根据用户权限列出可访问的存储卷
+// @Tags 存储卷
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param organization_id query int false "组织ID过滤"
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(10)
+// @Success 200 {object} models.APIResponse{data=models.PaginatedResponse} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /volumes [get]
 func (h *VolumeHandler) ListVolumes(c *gin.Context) {
-	ownerTypeStr := c.Query("owner_type")
-	ownerIDStr := c.Query("owner_id")
+	userID := middleware.MustGetUserID(c)
+	userRole := middleware.MustGetUserRole(c)
 
-	if ownerTypeStr == "" || ownerIDStr == "" {
+	var opts models.ListOptions
+	if err := c.ShouldBindQuery(&opts); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
 			Error: &models.APIError{
 				Code:    "INVALID_REQUEST",
-				Message: "owner_type and owner_id are required",
+				Message: "Invalid query parameters",
+				Details: err.Error(),
 			},
 		})
 		return
 	}
 
-	ownerID, err := strconv.ParseInt(ownerIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid owner_id",
+	// Check if filtering by organization
+	orgIDStr := c.Query("organization_id")
+	if orgIDStr != "" {
+		orgID, err := strconv.ParseInt(orgIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{
+				Success: false,
+				Error: &models.APIError{
+					Code:    "INVALID_REQUEST",
+					Message: "Invalid organization_id",
+				},
+			})
+			return
+		}
+
+		volumes, total, err := h.volumeService.ListVolumesByOrganization(c.Request.Context(), orgID, &opts)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Error: &models.APIError{
+					Code:    "INTERNAL_ERROR",
+					Message: "Failed to list volumes",
+					Details: err.Error(),
+				},
+			})
+			return
+		}
+
+		totalPages := int(total) / opts.PageSize
+		if int(total)%opts.PageSize > 0 {
+			totalPages++
+		}
+
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data: models.PaginatedResponse{
+				Items:      volumes,
+				Total:      total,
+				Page:       opts.Page,
+				PageSize:   opts.PageSize,
+				TotalPages: totalPages,
 			},
 		})
 		return
 	}
 
-	volumes, err := h.volumeService.ListVolumesByOwner(c.Request.Context(), models.OwnerType(ownerTypeStr), ownerID)
+	// List volumes based on user role
+	volumes, total, err := h.volumeService.ListVolumes(
+		c.Request.Context(),
+		userID,
+		userRole,
+		&opts,
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -153,14 +209,36 @@ func (h *VolumeHandler) ListVolumes(c *gin.Context) {
 		return
 	}
 
+	totalPages := int(total) / opts.PageSize
+	if int(total)%opts.PageSize > 0 {
+		totalPages++
+	}
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data:    volumes,
+		Data: models.PaginatedResponse{
+			Items:      volumes,
+			Total:      total,
+			Page:       opts.Page,
+			PageSize:   opts.PageSize,
+			TotalPages: totalPages,
+		},
 	})
 }
 
-// UpdateVolume updates a volume
-// PUT /api/v1/volumes/:id
+// UpdateVolume godoc
+// @Summary 更新存储卷
+// @Description 更新存储卷的配置信息
+// @Tags 存储卷
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "存储卷ID"
+// @Param request body models.UpdateVolumeRequest true "存储卷更新请求"
+// @Success 200 {object} models.APIResponse{data=models.Volume} "更新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /volumes/{id} [put]
 func (h *VolumeHandler) UpdateVolume(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -207,8 +285,18 @@ func (h *VolumeHandler) UpdateVolume(c *gin.Context) {
 	})
 }
 
-// DeleteVolume deletes a volume
-// DELETE /api/v1/volumes/:id
+// DeleteVolume godoc
+// @Summary 删除存储卷
+// @Description 删除指定的存储卷
+// @Tags 存储卷
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "存储卷ID"
+// @Success 200 {object} models.APIResponse "删除成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /volumes/{id} [delete]
 func (h *VolumeHandler) DeleteVolume(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -242,8 +330,19 @@ func (h *VolumeHandler) DeleteVolume(c *gin.Context) {
 	})
 }
 
-// SyncVolumeStatus syncs volume status from Kubernetes
-// POST /api/v1/volumes/:id/sync
+// SyncVolumeStatus godoc
+// @Summary 同步存储卷状态
+// @Description 从Kubernetes同步存储卷的实际状态
+// @Tags 存储卷
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "存储卷ID"
+// @Success 200 {object} models.APIResponse{data=models.Volume} "同步成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /volumes/{id}/sync [post]
 func (h *VolumeHandler) SyncVolumeStatus(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)

@@ -23,5 +23,8 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/rbac .
 
+# Copy Casbin configuration files
+COPY --from=builder /app/configs /root/configs
+
 # Run the binary
 CMD ["./rbac"]

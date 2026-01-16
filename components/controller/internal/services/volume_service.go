@@ -40,6 +40,17 @@ func (s *VolumeService) CreateVolume(ctx context.Context, req *models.CreateVolu
 		accessMode = models.VolumeAccessModeReadWriteOnce
 	}
 
+	// Create labels for RBAC
+	labels := models.ResourceLabels{
+		"owner_type": string(req.OwnerType),
+		"owner_id":   fmt.Sprintf("%d", req.OwnerID),
+	}
+
+	// Add organization_id label if it's an org volume
+	if req.OwnerType == models.OwnerTypeOrganization {
+		labels["organization_id"] = fmt.Sprintf("%d", req.OwnerID)
+	}
+
 	volume := &models.Volume{
 		UUID:         uuid.New(),
 		Name:         req.Name,
@@ -51,6 +62,7 @@ func (s *VolumeService) CreateVolume(ctx context.Context, req *models.CreateVolu
 		StorageClass: req.StorageClass,
 		AccessMode:   accessMode,
 		Status:       models.VolumeStatusPending,
+		Labels:       labels,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -166,3 +178,26 @@ func (s *VolumeService) SyncVolumeStatus(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ListVolumes lists volumes based on user role and permissions
+func (s *VolumeService) ListVolumes(ctx context.Context, userID int64, userRole models.UserRole, opts *models.ListOptions) ([]*models.Volume, int64, error) {
+	switch userRole {
+	case models.UserRoleSuperAdmin, models.UserRoleAdmin:
+		// Admins can see all volumes
+		return s.volumeRepo.ListAll(ctx, opts)
+
+	case models.UserRolePowerUser, models.UserRoleUser:
+		// Regular users and power users see their own volumes
+		return s.volumeRepo.ListAccessibleByUser(ctx, userID, opts)
+
+	default:
+		return nil, 0, fmt.Errorf("unknown user role: %s", userRole)
+	}
+}
+
+// ListVolumesByOrganization lists volumes in a specific organization
+func (s *VolumeService) ListVolumesByOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Volume, int64, error) {
+	labels := map[string]string{
+		"organization_id": fmt.Sprintf("%d", orgID),
+	}
+	return s.volumeRepo.ListByLabel(ctx, labels, opts)
+}

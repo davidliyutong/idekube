@@ -31,10 +31,7 @@ go.work
 bin/
 
 # Generated files
-docs/swagger.json
-docs/swagger.yaml
-docs/docs.go
-client/
+docs/api
 
 # Coverage reports
 coverage.out

@@ -37,3 +37,14 @@ type ListOptions struct {
 	SortOrder string `form:"sort_order,default=desc" binding:"omitempty,oneof=asc desc"`
 	Search    string `form:"search"`
 }
+
+// ResourceLabels represents labels attached to resources for organization and RBAC
+type ResourceLabels map[string]string
+
+// OwnerType represents the type of owner for a resource
+type OwnerType string
+
+const (
+	OwnerTypeUser         OwnerType = "user"
+	OwnerTypeOrganization OwnerType = "organization"
+)

@@ -32,12 +32,12 @@ type CreateAuditLogRequest struct {
 
 // Session represents a user session
 type Session struct {
-	ID             int64      `json:"id" db:"id"`
-	SessionToken   string     `json:"session_token" db:"session_token"`
-	UserID         int64      `json:"user_id" db:"user_id"`
-	IPAddress      *string    `json:"ip_address,omitempty" db:"ip_address"`
-	UserAgent      *string    `json:"user_agent,omitempty" db:"user_agent"`
-	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
-	ExpiresAt      time.Time  `json:"expires_at" db:"expires_at"`
-	LastActivityAt time.Time  `json:"last_activity_at" db:"last_activity_at"`
+	ID             int64     `json:"id" db:"id"`
+	SessionToken   string    `json:"session_token" db:"session_token"`
+	UserID         int64     `json:"user_id" db:"user_id"`
+	IPAddress      *string   `json:"ip_address,omitempty" db:"ip_address"`
+	UserAgent      *string   `json:"user_agent,omitempty" db:"user_agent"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	ExpiresAt      time.Time `json:"expires_at" db:"expires_at"`
+	LastActivityAt time.Time `json:"last_activity_at" db:"last_activity_at"`
 }

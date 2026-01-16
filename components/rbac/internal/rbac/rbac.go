@@ -5,11 +5,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/casbin/casbin/v2"
+	"github.com/davidliyutong/idekube-rbac/internal/opa"
 	"github.com/davidliyutong/idekube-rbac/pkg/database"
 	"github.com/davidliyutong/idekube-rbac/pkg/k8s"
 	"github.com/davidliyutong/idekube-rbac/pkg/logger"
-	"github.com/davidliyutong/idekube-rbac/pkg/queue"
 
 	"github.com/davidliyutong/idekube-rbac/internal/api"
 	"github.com/davidliyutong/idekube-rbac/internal/config"
@@ -20,11 +19,10 @@ type RBACService struct {
 	cfg       *config.Config
 	k8sClient *k8s.Client
 	db        *database.PostgresClient
-	mq        *queue.RabbitMQClient
 	log       *logger.Logger
 
-	enforcer  *casbin.Enforcer
-	perm       *permission.PermissionService
+	enforcer  *opa.Enforcer
+	perm      *permission.PermissionService
 	apiServer *api.Server
 }
 
@@ -32,7 +30,6 @@ func NewRBACService(
 	cfg *config.Config,
 	k8sClient *k8s.Client,
 	db *database.PostgresClient,
-	mq *queue.RabbitMQClient,
 	log *logger.Logger,
 ) (*RBACService, error) {
 	if cfg == nil {
@@ -45,7 +42,7 @@ func NewRBACService(
 		return nil, errors.New("logger is required")
 	}
 
-	enforcer, err := newEnforcer(db.DB(), cfg.Casbin.ModelPath, cfg.Casbin.PolicyPath, log)
+	enforcer, err := opa.NewEnforcer(db.DB(), cfg.OPA.PolicyPath, cfg.OPA.DataPath, log)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +54,6 @@ func NewRBACService(
 		cfg:       cfg,
 		k8sClient: k8sClient,
 		db:        db,
-		mq:        mq,
 		log:       log,
 		enforcer:  enforcer,
 		perm:      perm,

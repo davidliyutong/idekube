@@ -34,8 +34,8 @@ func (m *ServiceManager) CreateService(ctx context.Context, workspace *models.Wo
 			Name:      serviceName,
 			Namespace: m.namespace,
 			Labels: map[string]string{
-				"app":           "idekube",
-				"workspace-id":  fmt.Sprintf("%d", workspace.ID),
+				"app":            "idekube",
+				"workspace-id":   fmt.Sprintf("%d", workspace.ID),
 				"workspace-uuid": workspace.UUID.String(),
 			},
 		},

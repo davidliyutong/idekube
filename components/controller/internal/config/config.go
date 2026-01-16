@@ -11,11 +11,13 @@ type Config struct {
 	Namespace          string
 	Postgres           PostgresConfig
 	RabbitMQ           RabbitMQConfig
+	RBACEndpoint       string
 	LogLevel           string
 	WorkerThreads      int
 	ServerAddress      string
 	JWTSecret          string
 	JWTExpirationHours int
+	AdminPassword      string
 }
 
 type PostgresConfig struct {
@@ -36,11 +38,13 @@ type RabbitMQConfig struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Kubeconfig:   os.Getenv("KUBECONFIG"),
-		Namespace:    getEnvOrDefault("NAMESPACE", ""),
-		ServerAddress: getEnvOrDefault("SERVER_ADDRESS", ":8080"),
-		JWTSecret:    getEnvOrDefault("JWT_SECRET", "change-me-in-production"),
+		Kubeconfig:         os.Getenv("KUBECONFIG"),
+		Namespace:          getEnvOrDefault("NAMESPACE", ""),
+		ServerAddress:      getEnvOrDefault("SERVER_ADDRESS", ":8080"),
+		JWTSecret:          getEnvOrDefault("JWT_SECRET", "change-me-in-production"),
 		JWTExpirationHours: getEnvAsIntOrDefault("JWT_EXPIRATION_HOURS", 24),
+		AdminPassword:      os.Getenv("ADMIN_PASSWORD"),
+		RBACEndpoint:       os.Getenv("RBAC_ENDPOINT"),
 		Postgres: PostgresConfig{
 			Host:     getEnvOrDefault("POSTGRES_HOST", "localhost"),
 			Port:     getEnvAsIntOrDefault("POSTGRES_PORT", 5432),
@@ -66,6 +70,10 @@ func Load() (*Config, error) {
 
 	if cfg.RabbitMQ.User == "" || cfg.RabbitMQ.Password == "" {
 		return nil, fmt.Errorf("RabbitMQ configuration is incomplete")
+	}
+
+	if cfg.RBACEndpoint == "" {
+		return nil, fmt.Errorf("RBAC_ENDPOINT is required but not configured")
 	}
 
 	return cfg, nil

@@ -8,20 +8,24 @@ import (
 	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/davidliyutong/idekube-controller/pkg/queue"
+	"github.com/davidliyutong/idekube-controller/pkg/utils"
+	"go.uber.org/zap"
 )
 
 // UserService handles user business logic
 type UserService struct {
-	userRepo   *repository.UserRepository
-	jwtManager *middleware.JWTManager
+	userRepo       *repository.UserRepository
+	jwtManager     *middleware.JWTManager
+	eventPublisher *queue.EventPublisher
 }
 
 // NewUserService creates a new user service
-func NewUserService(userRepo *repository.UserRepository, jwtManager *middleware.JWTManager) *UserService {
+func NewUserService(userRepo *repository.UserRepository, jwtManager *middleware.JWTManager, eventPublisher *queue.EventPublisher) *UserService {
 	return &UserService{
-		userRepo:   userRepo,
-		jwtManager: jwtManager,
+		userRepo:       userRepo,
+		jwtManager:     jwtManager,
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -32,27 +36,27 @@ func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 	if err != nil {
 		return nil, fmt.Errorf("invalid credentials")
 	}
-	
+
 	// Check if user is active
 	if user.Status != models.UserStatusActive {
 		return nil, fmt.Errorf("user account is not active")
 	}
-	
+
 	// Verify password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+	err = utils.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil {
 		return nil, fmt.Errorf("invalid credentials")
 	}
-	
+
 	// Generate JWT token
 	token, expiresAt, err := s.jwtManager.GenerateToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
-	
+
 	// Update last login time
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
-	
+
 	return &models.LoginResponse{
 		Token:     token,
 		ExpiresAt: expiresAt,
@@ -63,21 +67,21 @@ func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 // CreateUser creates a new user
 func (s *UserService) CreateUser(ctx context.Context, req *models.CreateUserRequest) (*models.User, error) {
 	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
-	
+
 	// Set default role if not specified
 	role := req.Role
 	if role == "" {
 		role = models.UserRoleUser
 	}
-	
+
 	user := &models.User{
 		Username:     req.Username,
 		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
+		PasswordHash: hashedPassword,
 		Role:         role,
 		Status:       models.UserStatusActive,
 		DisplayName:  req.DisplayName,
@@ -85,12 +89,12 @@ func (s *UserService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	
+
 	err = s.userRepo.Create(ctx, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
-	
+
 	return user, nil
 }
 
@@ -102,7 +106,14 @@ func (s *UserService) GetUserByID(ctx context.Context, id int64) (*models.User, 
 	}
 	return user, nil
 }
-
+// GetUserByUsername retrieves a user by username
+func (s *UserService) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
 // ListUsers lists users with pagination
 func (s *UserService) ListUsers(ctx context.Context, opts *models.ListOptions) ([]*models.User, int64, error) {
 	return s.userRepo.List(ctx, opts)
@@ -114,7 +125,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id int64, req *models.Upda
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Update fields if provided
 	if req.Email != nil {
 		user.Email = req.Email
@@ -134,18 +145,41 @@ func (s *UserService) UpdateUser(ctx context.Context, id int64, req *models.Upda
 	if req.ExtraInfo != nil {
 		user.ExtraInfo = req.ExtraInfo
 	}
-	
+
 	err = s.userRepo.Update(ctx, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
-	
+
 	return user, nil
 }
 
-// DeleteUser deletes a user
+// DeleteUser deletes a user and publishes event for K8S cleanup
 func (s *UserService) DeleteUser(ctx context.Context, id int64) error {
-	return s.userRepo.Delete(ctx, id)
+	// Get user info before deletion
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Soft delete the user
+	err = s.userRepo.Delete(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Publish delete event to HouseKeeper for K8S resource cleanup
+	if s.eventPublisher != nil {
+		if err := s.eventPublisher.PublishUserDelete(ctx, id, user.Username); err != nil {
+			// Log error but don't fail the operation
+			// HouseKeeper reconciler will handle cleanup eventually
+			zap.L().Error("Failed to publish user delete event",
+				zap.Int64("user_id", id),
+				zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 // ChangePassword changes a user's password
@@ -154,25 +188,114 @@ func (s *UserService) ChangePassword(ctx context.Context, userID int64, req *mod
 	if err != nil {
 		return err
 	}
-	
+
 	// Verify old password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword))
+	err = utils.VerifyPassword(req.OldPassword, user.PasswordHash)
 	if err != nil {
 		return fmt.Errorf("invalid old password")
 	}
-	
+
 	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
-	
-	user.PasswordHash = string(hashedPassword)
-	
+
+	user.PasswordHash = hashedPassword
+
 	err = s.userRepo.Update(ctx, user)
 	if err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
-	
+
 	return nil
+}
+
+// UpdateUserProfile updates user's own profile (limited fields)
+func (s *UserService) UpdateUserProfile(ctx context.Context, userID int64, req *models.UpdateUserProfileRequest) (*models.User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update allowed fields
+	if req.DisplayName != nil {
+		user.DisplayName = req.DisplayName
+	}
+	if req.Email != nil {
+		user.Email = req.Email
+	}
+	if req.AvatarURL != nil {
+		user.AvatarURL = req.AvatarURL
+	}
+
+	err = s.userRepo.Update(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	return user, nil
+}
+
+// UpdateUserByAdmin updates user by admin (more fields allowed)
+func (s *UserService) UpdateUserByAdmin(ctx context.Context, userID int64, req *models.UpdateUserRequest, isSuperAdmin bool) (*models.User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update fields that admin can change
+	if req.Email != nil {
+		user.Email = req.Email
+	}
+	if req.DisplayName != nil {
+		user.DisplayName = req.DisplayName
+	}
+	if req.AvatarURL != nil {
+		user.AvatarURL = req.AvatarURL
+	}
+	if req.Status != nil {
+		user.Status = *req.Status
+	}
+
+	// Only super admin can change roles
+	if req.Role != nil {
+		if !isSuperAdmin {
+			return nil, fmt.Errorf("only super admin can change user roles")
+		}
+		user.Role = *req.Role
+	}
+
+	if req.ExtraInfo != nil {
+		user.ExtraInfo = req.ExtraInfo
+	}
+
+	err = s.userRepo.Update(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return user, nil
+}
+
+// CheckUserExists checks if a user exists by username (for power_user)
+func (s *UserService) CheckUserExists(ctx context.Context, username string) (bool, error) {
+	user, err := s.userRepo.GetByUsername(ctx, username)
+	if err != nil {
+		if err.Error() == "user not found" {
+			return false, nil
+		}
+		return false, err
+	}
+	return user != nil, nil
+}
+
+// SearchUsers searches users by query (for organization owner to add members)
+func (s *UserService) SearchUsers(ctx context.Context, query string, opts *models.ListOptions) ([]*models.User, int64, error) {
+	return s.userRepo.SearchByQuery(ctx, query, opts)
+}
+
+// ListAllUsers lists all users (for admin)
+func (s *UserService) ListAllUsers(ctx context.Context, opts *models.ListOptions) ([]*models.User, int64, error) {
+	return s.userRepo.ListAll(ctx, opts)
 }

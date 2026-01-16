@@ -116,7 +116,7 @@ func (s *OIDCService) HandleCallback(ctx context.Context, state, code string) (*
 	}
 
 	providerName := session.Value
-	
+
 	// Delete used state
 	_ = s.sessionRepo.DeleteByKey(ctx, fmt.Sprintf("oidc_state_%s", state))
 

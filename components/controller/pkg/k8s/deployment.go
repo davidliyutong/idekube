@@ -36,11 +36,11 @@ func (m *DeploymentManager) CreateDeployment(ctx context.Context, workspace *mod
 			Name:      deploymentName,
 			Namespace: m.namespace,
 			Labels: map[string]string{
-				"app":           "idekube",
-				"workspace-id":  fmt.Sprintf("%d", workspace.ID),
+				"app":            "idekube",
+				"workspace-id":   fmt.Sprintf("%d", workspace.ID),
 				"workspace-uuid": workspace.UUID.String(),
-				"owner-type":    string(workspace.OwnerType),
-				"owner-id":      fmt.Sprintf("%d", workspace.OwnerID),
+				"owner-type":     string(workspace.OwnerType),
+				"owner-id":       fmt.Sprintf("%d", workspace.OwnerID),
 			},
 		},
 		Spec: appsv1.DeploymentSpec{

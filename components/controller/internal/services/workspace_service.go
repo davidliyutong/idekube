@@ -14,14 +14,14 @@ import (
 
 // WorkspaceService handles workspace business logic
 type WorkspaceService struct {
-	workspaceRepo     *repository.WorkspaceRepository
-	templateRepo      *repository.TemplateRepository
-	volumeRepo        *repository.VolumeRepository
-	eventPublisher    *queue.EventPublisher
-	logger            *zap.Logger
-	
+	workspaceRepo  *repository.WorkspaceRepository
+	templateRepo   *repository.TemplateRepository
+	volumeRepo     *repository.VolumeRepository
+	eventPublisher *queue.EventPublisher
+	logger         *zap.Logger
+
 	// Flag to enable direct K8S operations (for backward compatibility during migration)
-	enableDirectK8S   bool
+	enableDirectK8S bool
 }
 
 // NewWorkspaceService creates a new workspace service
@@ -66,21 +66,36 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req *models.Crea
 		storageMB = template.DefaultStorageMB
 	}
 
+	// Create labels for RBAC
+	labels := models.ResourceLabels{
+		"owner_type": string(req.OwnerType),
+		"owner_id":   fmt.Sprintf("%d", req.OwnerID),
+	}
+
+	// Add organization_id label if it's an org workspace
+	var orgID *int64
+	if req.OwnerType == models.OwnerTypeOrganization {
+		orgID = &req.OwnerID
+		labels["organization_id"] = fmt.Sprintf("%d", req.OwnerID)
+	}
+
 	workspace := &models.Workspace{
-		UUID:          uuid.New(),
-		Name:          req.Name,
-		DisplayName:   req.DisplayName,
-		Description:   req.Description,
-		OwnerType:     req.OwnerType,
-		OwnerID:       req.OwnerID,
-		TemplateID:    req.TemplateID,
-		CPUMillicores: cpuMillicores,
-		MemoryMB:      memoryMB,
-		StorageMB:     storageMB,
-		CurrentStatus: models.WorkspaceStatusPending,
-		TargetStatus:  models.WorkspaceStatusRunning,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		UUID:           uuid.New(),
+		Name:           req.Name,
+		DisplayName:    req.DisplayName,
+		Description:    req.Description,
+		OwnerType:      req.OwnerType,
+		OwnerID:        req.OwnerID,
+		TemplateID:     req.TemplateID,
+		CPUMillicores:  cpuMillicores,
+		MemoryMB:       memoryMB,
+		StorageMB:      storageMB,
+		CurrentStatus:  models.WorkspaceStatusPending,
+		TargetStatus:   models.WorkspaceStatusRunning,
+		Labels:         labels,
+		OrganizationID: orgID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	// Create in database first
@@ -98,7 +113,7 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req *models.Crea
 	}
 
 	// Publish workspace creation event to HouseKeeper
-	// NOTE: EventPublisher expects Volume, not WorkspaceVolume. 
+	// NOTE: EventPublisher expects Volume, not WorkspaceVolume.
 	// In a production scenario, you'd resolve full volumes from workspaceVolumes.
 	volumes := []*models.Volume{}
 	if err := s.eventPublisher.PublishWorkspaceCreate(ctx, workspace, template, volumes); err != nil {
@@ -164,8 +179,8 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, id int64, req *m
 	// Publish update event if resources changed
 	if needsUpdate {
 		template, _ := s.templateRepo.GetByID(ctx, workspace.TemplateID)
-		
-		// NOTE: EventPublisher expects Volume, not WorkspaceVolume. 
+
+		// NOTE: EventPublisher expects Volume, not WorkspaceVolume.
 		// In production you'd resolve full volumes from workspaceVolumes.
 		volumes := []*models.Volume{}
 		if err := s.eventPublisher.PublishWorkspaceUpdate(ctx, workspace, template, volumes, reason); err != nil {
@@ -271,4 +286,33 @@ func (s *WorkspaceService) AttachVolume(ctx context.Context, workspaceID, volume
 // DetachVolume detaches a volume from a workspace
 func (s *WorkspaceService) DetachVolume(ctx context.Context, workspaceID, volumeID int64) error {
 	return s.workspaceRepo.DetachVolume(ctx, workspaceID, volumeID)
+}
+
+// ListWorkspaces lists workspaces based on user role and permissions
+func (s *WorkspaceService) ListWorkspaces(ctx context.Context, userID int64, userRole models.UserRole, orgRole *models.OrganizationMemberRole, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+	switch userRole {
+	case models.UserRoleSuperAdmin, models.UserRoleAdmin:
+		// Admins can see all workspaces
+		return s.workspaceRepo.ListAll(ctx, opts)
+
+	case models.UserRolePowerUser, models.UserRoleUser:
+		// Regular users and power users see their own workspaces and org workspaces
+		return s.workspaceRepo.ListAccessibleByUser(ctx, userID, opts)
+
+	default:
+		return nil, 0, fmt.Errorf("unknown user role: %s", userRole)
+	}
+}
+
+// ListWorkspacesByOrganization lists workspaces in a specific organization
+func (s *WorkspaceService) ListWorkspacesByOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+	labels := map[string]string{
+		"organization_id": fmt.Sprintf("%d", orgID),
+	}
+	return s.workspaceRepo.ListByLabel(ctx, labels, opts)
+}
+
+// ListOrgWorkspacesForAdmin lists workspaces in organizations where user is owner/admin
+func (s *WorkspaceService) ListOrgWorkspacesForAdmin(ctx context.Context, userID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+	return s.workspaceRepo.ListByOrganizationAll(ctx, userID, opts)
 }

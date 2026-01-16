@@ -10,9 +10,6 @@ import (
 
 	"github.com/davidliyutong/idekube-rbac/internal/permission"
 	"github.com/davidliyutong/idekube-rbac/pkg/logger"
-
-	httpSwagger "github.com/swaggo/http-swagger"
-	_ "github.com/davidliyutong/idekube-rbac/docs" // swagger docs
 )
 
 // Server exposes HTTP endpoints for permission checks.
@@ -42,10 +39,6 @@ func NewServer(port int, perm *permission.PermissionService, log *logger.Logger)
 
 	mux.HandleFunc("/healthz", srv.handleHealth)
 	mux.HandleFunc("/api/v1/rbac/check", srv.handleCheckPermission)
-	mux.HandleFunc("/api/v1/rbac/assign-role", srv.handleAssignRole)
-	
-	// Swagger UI
-	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
 
 	srv.httpServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
@@ -104,59 +97,47 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // @Router /rbac/check [post]
 func (s *Server) handleCheckPermission(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error": map[string]string{
+				"code":    "METHOD_NOT_ALLOWED",
+				"message": "only POST method is allowed",
+			},
+		})
 		return
 	}
 
 	var req permission.CheckPermissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error": map[string]string{
+				"code":    "INVALID_REQUEST",
+				"message": fmt.Sprintf("invalid request body: %v", err),
+			},
+		})
 		return
 	}
 
 	allowed, err := s.perm.CheckPermission(r.Context(), req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("permission check failed: %v", err), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error": map[string]string{
+				"code":    "PERMISSION_CHECK_FAILED",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
 
-	s.writeJSON(w, map[string]any{"allowed": allowed})
-}
-
-// AssignRoleRequest describes the request to assign a role to a user
-type AssignRoleRequest struct {
-	UserID int64  `json:"user_id" example:"123"`
-	Role   string `json:"role" example:"admin"`
-}
-
-// @Summary Assign role to user
-// @Description Assign a role to a user
-// @Tags rbac
-// @Accept json
-// @Produce json
-// @Param request body AssignRoleRequest true "Assign role request"
-// @Success 200 {object} map[string]string "message: success"
-// @Failure 400 {string} string "Invalid request or role assignment failed"
-// @Failure 405 {string} string "Method not allowed"
-// @Router /rbac/assign-role [post]
-func (s *Server) handleAssignRole(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req AssignRoleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	if err := s.perm.AssignRole(r.Context(), req.UserID, req.Role); err != nil {
-		http.Error(w, fmt.Sprintf("role assignment failed: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	s.writeJSON(w, map[string]string{"message": "role assigned successfully"})
+	s.writeJSON(w, map[string]any{"success": true, "allowed": allowed})
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, payload any) {

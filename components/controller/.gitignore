@@ -30,13 +30,7 @@ go.work
 # Build output
 bin/
 # Generated Swagger documentation
-docs/docs.go
-docs/swagger.json
-docs/swagger.yaml
-
-# Generated API clients
-client-js/
-client-ts/
+docs/api
 
 # Test coverage
 coverage.out

@@ -38,8 +38,10 @@ type Volume struct {
 	AccessMode   VolumeAccessMode `json:"access_mode" db:"access_mode"`
 	PVCName      *string          `json:"pvc_name,omitempty" db:"pvc_name"`
 	Status       VolumeStatus     `json:"status" db:"status"`
+	Labels       ResourceLabels   `json:"labels,omitempty" db:"labels"`
 	CreatedAt    time.Time        `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time        `json:"updated_at" db:"updated_at"`
+	DeletedAt    *time.Time       `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // CreateVolumeRequest represents the request to create a volume

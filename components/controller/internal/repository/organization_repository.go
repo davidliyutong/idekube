@@ -23,10 +23,10 @@ func (r *OrganizationRepository) Create(ctx context.Context, org *models.Organiz
 	return r.db.WithContext(ctx).Create(org).Error
 }
 
-// GetByID retrieves an organization by ID
+// GetByID retrieves an organization by ID (excludes soft deleted)
 func (r *OrganizationRepository) GetByID(ctx context.Context, id int64) (*models.Organization, error) {
 	var org models.Organization
-	err := r.db.WithContext(ctx).First(&org, id).Error
+	err := r.db.WithContext(ctx).Where("deleted_at IS NULL").First(&org, id).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, fmt.Errorf("organization not found")
 	}
@@ -48,22 +48,22 @@ func (r *OrganizationRepository) Update(ctx context.Context, org *models.Organiz
 	return r.db.WithContext(ctx).Save(org).Error
 }
 
-// Delete deletes an organization
+// Delete soft deletes an organization by setting deleted_at
 func (r *OrganizationRepository) Delete(ctx context.Context, id int64) error {
-	result := r.db.WithContext(ctx).Delete(&models.Organization{}, id)
+	result := r.db.WithContext(ctx).Model(&models.Organization{}).Where("id = ? AND deleted_at IS NULL", id).Update("deleted_at", gorm.Expr("NOW()"))
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("organization not found")
+		return fmt.Errorf("organization not found or already deleted")
 	}
 	return nil
 }
 
-// ListByOwner lists organizations owned by a user
+// ListByOwner lists organizations owned by a user (excludes soft deleted)
 func (r *OrganizationRepository) ListByOwner(ctx context.Context, ownerID int64) ([]*models.Organization, error) {
 	var orgs []*models.Organization
-	err := r.db.WithContext(ctx).Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&orgs).Error
+	err := r.db.WithContext(ctx).Where("owner_id = ? AND deleted_at IS NULL", ownerID).Order("created_at DESC").Find(&orgs).Error
 	return orgs, err
 }
 
@@ -125,5 +125,51 @@ func (r *OrganizationRepository) ListUserOrganizations(ctx context.Context, user
 		Order("organization_members.joined_at DESC").
 		Find(&orgs).Error
 	return orgs, err
-	return orgs, err
+}
+
+// ListAll retrieves all organizations (for admin) with pagination
+func (r *OrganizationRepository) ListAll(ctx context.Context, opts *models.ListOptions) ([]*models.Organization, int64, error) {
+	var orgs []*models.Organization
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Organization{})
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get organizations with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&orgs).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return orgs, total, nil
+}
+
+// GetUserOrganizationRole retrieves user's role in an organization
+func (r *OrganizationRepository) GetUserOrganizationRole(ctx context.Context, userID, orgID int64) (models.OrganizationMemberRole, error) {
+	var member models.OrganizationMember
+	err := r.db.WithContext(ctx).
+		Where("organization_id = ? AND user_id = ?", orgID, userID).
+		First(&member).Error
+	if err == gorm.ErrRecordNotFound {
+		return "", fmt.Errorf("user is not a member of this organization")
+	}
+	if err != nil {
+		return "", err
+	}
+	return member.Role, nil
 }

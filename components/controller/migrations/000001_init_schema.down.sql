@@ -1,4 +1,5 @@
 -- Drop all tables in reverse order to respect foreign key constraints
+-- Note: deleted_at columns are part of table structure, no separate cleanup needed
 
 DROP TABLE IF EXISTS oauth_sessions;
 DROP TABLE IF EXISTS audit_logs;
