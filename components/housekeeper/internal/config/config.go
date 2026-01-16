@@ -10,7 +10,7 @@ type Config struct {
 	Kubeconfig   string
 	Namespace    string
 	Postgres     PostgresConfig
-	RabbitMQ     RabbitMQConfig
+	Redis        RedisConfig
 	LogLevel     string
 	WorkerThreads int
 }
@@ -23,12 +23,11 @@ type PostgresConfig struct {
 	Database string
 }
 
-type RabbitMQConfig struct {
+type RedisConfig struct {
 	Host     string
 	Port     int
-	User     string
 	Password string
-	VHost    string
+	DB       int
 }
 
 func Load() (*Config, error) {
@@ -42,12 +41,11 @@ func Load() (*Config, error) {
 			Password: os.Getenv("POSTGRES_PASSWORD"),
 			Database: os.Getenv("POSTGRES_DB"),
 		},
-		RabbitMQ: RabbitMQConfig{
-			Host:     getEnvOrDefault("RABBITMQ_HOST", "localhost"),
-			Port:     getEnvAsIntOrDefault("RABBITMQ_PORT", 5672),
-			User:     os.Getenv("RABBITMQ_USER"),
-			Password: os.Getenv("RABBITMQ_PASSWORD"),
-			VHost:    getEnvOrDefault("RABBITMQ_VHOST", "/"),
+		Redis: RedisConfig{
+			Host:     getEnvOrDefault("REDIS_HOST", "localhost"),
+			Port:     getEnvAsIntOrDefault("REDIS_PORT", 6379),
+			Password: os.Getenv("REDIS_PASSWORD"),
+			DB:       getEnvAsIntOrDefault("REDIS_DB", 0),
 		},
 		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
 		WorkerThreads: getEnvAsIntOrDefault("WORKER_THREADS", 1),
@@ -56,10 +54,6 @@ func Load() (*Config, error) {
 	// Validate required fields
 	if cfg.Postgres.User == "" || cfg.Postgres.Password == "" || cfg.Postgres.Database == "" {
 		return nil, fmt.Errorf("PostgreSQL configuration is incomplete")
-	}
-
-	if cfg.RabbitMQ.User == "" || cfg.RabbitMQ.Password == "" {
-		return nil, fmt.Errorf("RabbitMQ configuration is incomplete")
 	}
 
 	return cfg, nil

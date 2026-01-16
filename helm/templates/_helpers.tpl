@@ -83,29 +83,6 @@ app.kubernetes.io/component: controller
 {{- end }}
 
 {{/*
-RBAC fullname
-*/}}
-{{- define "idekube.rbac.fullname" -}}
-{{- printf "%s-rbac" (include "idekube.fullname" .) | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
-RBAC labels
-*/}}
-{{- define "idekube.rbac.labels" -}}
-{{ include "idekube.labels" . }}
-app.kubernetes.io/component: rbac
-{{- end }}
-
-{{/*
-RBAC selector labels
-*/}}
-{{- define "idekube.rbac.selectorLabels" -}}
-{{ include "idekube.selectorLabels" . }}
-app.kubernetes.io/component: rbac
-{{- end }}
-
-{{/*
 Housekeeper fullname
 */}}
 {{- define "idekube.housekeeper.fullname" -}}
@@ -163,13 +140,13 @@ PostgreSQL fullname
 {{- end }}
 
 {{/*
-RabbitMQ fullname
+Redis fullname
 */}}
-{{- define "idekube.rabbitmq.fullname" -}}
-{{- if .Values.rabbitmq.enabled }}
-{{- printf "%s-rabbitmq" (include "idekube.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- define "idekube.redis.fullname" -}}
+{{- if .Values.redis.enabled }}
+{{- printf "%s-redis" (include "idekube.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- printf "rabbitmq" }}
+{{- printf "redis" }}
 {{- end }}
 {{- end }}
 

@@ -7,17 +7,16 @@ import (
 )
 
 type Config struct {
-	Kubeconfig         string
-	Namespace          string
-	Postgres           PostgresConfig
-	RabbitMQ           RabbitMQConfig
-	RBACEndpoint       string
-	LogLevel           string
-	WorkerThreads      int
-	ServerAddress      string
-	JWTSecret          string
-	JWTExpirationHours int
-	AdminPassword      string
+	Kubeconfig    string
+	Namespace     string
+	Postgres      PostgresConfig
+	Redis         RedisConfig
+	OPA           OPAConfig
+	LogLevel      string
+	WorkerThreads int
+	ServerAddress string
+	JWTSecret     string
+	AdminPassword string
 }
 
 type PostgresConfig struct {
@@ -28,23 +27,25 @@ type PostgresConfig struct {
 	Database string
 }
 
-type RabbitMQConfig struct {
+type RedisConfig struct {
 	Host     string
 	Port     int
-	User     string
 	Password string
-	VHost    string
+	DB       int
+}
+
+type OPAConfig struct {
+	PolicyPath string
+	DataPath   string
 }
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Kubeconfig:         os.Getenv("KUBECONFIG"),
-		Namespace:          getEnvOrDefault("NAMESPACE", ""),
-		ServerAddress:      getEnvOrDefault("SERVER_ADDRESS", ":8080"),
-		JWTSecret:          getEnvOrDefault("JWT_SECRET", "change-me-in-production"),
-		JWTExpirationHours: getEnvAsIntOrDefault("JWT_EXPIRATION_HOURS", 24),
-		AdminPassword:      os.Getenv("ADMIN_PASSWORD"),
-		RBACEndpoint:       os.Getenv("RBAC_ENDPOINT"),
+		Kubeconfig:    os.Getenv("KUBECONFIG"),
+		Namespace:     getEnvOrDefault("NAMESPACE", ""),
+		ServerAddress: getEnvOrDefault("SERVER_ADDRESS", ":8080"),
+		JWTSecret:     getEnvOrDefault("JWT_SECRET", "change-me-in-production"),
+		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		Postgres: PostgresConfig{
 			Host:     getEnvOrDefault("POSTGRES_HOST", "localhost"),
 			Port:     getEnvAsIntOrDefault("POSTGRES_PORT", 5432),
@@ -52,12 +53,15 @@ func Load() (*Config, error) {
 			Password: os.Getenv("POSTGRES_PASSWORD"),
 			Database: os.Getenv("POSTGRES_DB"),
 		},
-		RabbitMQ: RabbitMQConfig{
-			Host:     getEnvOrDefault("RABBITMQ_HOST", "localhost"),
-			Port:     getEnvAsIntOrDefault("RABBITMQ_PORT", 5672),
-			User:     os.Getenv("RABBITMQ_USER"),
-			Password: os.Getenv("RABBITMQ_PASSWORD"),
-			VHost:    getEnvOrDefault("RABBITMQ_VHOST", "/"),
+		Redis: RedisConfig{
+			Host:     getEnvOrDefault("REDIS_HOST", "localhost"),
+			Port:     getEnvAsIntOrDefault("REDIS_PORT", 6379),
+			Password: os.Getenv("REDIS_PASSWORD"),
+			DB:       getEnvAsIntOrDefault("REDIS_DB", 0),
+		},
+		OPA: OPAConfig{
+			PolicyPath: getEnvOrDefault("OPA_POLICY_PATH", "configs/policy.rego"),
+			DataPath:   getEnvOrDefault("OPA_DATA_PATH", "configs/data.json"),
 		},
 		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
 		WorkerThreads: getEnvAsIntOrDefault("WORKER_THREADS", 1),
@@ -66,14 +70,6 @@ func Load() (*Config, error) {
 	// Validate required fields
 	if cfg.Postgres.User == "" || cfg.Postgres.Password == "" || cfg.Postgres.Database == "" {
 		return nil, fmt.Errorf("PostgreSQL configuration is incomplete")
-	}
-
-	if cfg.RabbitMQ.User == "" || cfg.RabbitMQ.Password == "" {
-		return nil, fmt.Errorf("RabbitMQ configuration is incomplete")
-	}
-
-	if cfg.RBACEndpoint == "" {
-		return nil, fmt.Errorf("RBAC_ENDPOINT is required but not configured")
 	}
 
 	return cfg, nil

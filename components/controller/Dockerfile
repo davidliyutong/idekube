@@ -27,6 +27,8 @@ COPY --from=builder /app/migrate .
 
 # Copy migrations directory
 COPY --from=builder /app/migrations ./migrations
+# Copy configs directory
+COPY --from=builder /app/configs ./configs
 
 # Copy entrypoint script
 COPY entrypoint.sh .

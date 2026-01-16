@@ -13,14 +13,14 @@ import (
 type Controller struct {
 	k8sClient *k8s.Client
 	db        *database.PostgresClient
-	mq        *queue.RabbitMQClient
+	mq        *queue.RedisQueueClient
 	log       *zap.Logger
 }
 
 func NewController(
 	k8sClient *k8s.Client,
 	db *database.PostgresClient,
-	mq *queue.RabbitMQClient,
+	mq *queue.RedisQueueClient,
 	log *zap.Logger,
 ) *Controller {
 	return &Controller{

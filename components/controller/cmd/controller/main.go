@@ -14,11 +14,14 @@ import (
 	"github.com/davidliyutong/idekube-controller/internal/handlers"
 	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
+	"github.com/davidliyutong/idekube-controller/internal/opa"
+	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/internal/services"
 	"github.com/davidliyutong/idekube-controller/pkg/database"
+	"github.com/davidliyutong/idekube-controller/pkg/logger"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
-	"github.com/davidliyutong/idekube-controller/pkg/rbac"
+	redisClient "github.com/davidliyutong/idekube-controller/pkg/redis"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -46,9 +49,9 @@ import (
 // @description Type "Bearer" followed by a space and JWT token.
 
 var (
-	serverAddr      string
-	skipMigrations  bool
-	migrationsPath  string
+	serverAddr     string
+	skipMigrations bool
+	migrationsPath string
 )
 
 func main() {
@@ -118,25 +121,38 @@ func runController(cmd *cobra.Command, args []string) error {
 	// Get GORM DB instance
 	gormDB := db.DB()
 
-	// Initialize RabbitMQ connection
-	mqClient, err := queue.NewRabbitMQClient(cfg.RabbitMQ)
+	// Initialize Redis connection
+	redisConfig := &redisClient.Config{
+		Host:     cfg.Redis.Host,
+		Port:     cfg.Redis.Port,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	}
+	redis, err := redisClient.NewClient(redisConfig)
 	if err != nil {
-		return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
-	defer mqClient.Close()
+	defer redis.Close()
+	zapLogger.Info("Redis client initialized", zap.String("host", cfg.Redis.Host), zap.Int("port", cfg.Redis.Port))
 
-	// Initialize JWT manager
-	jwtManager := middleware.NewJWTManager(&middleware.JWTConfig{
-		SecretKey:     cfg.JWTSecret,
-		TokenDuration: time.Duration(cfg.JWTExpirationHours) * time.Hour,
-	})
-
-	// Initialize RBAC client
-	if cfg.RBACEndpoint == "" {
-		return fmt.Errorf("RBAC_ENDPOINT is required but not configured")
+	// Initialize Redis queue client
+	redisQueue, err := queue.NewRedisQueueClient(redis.GetClient(), zapLogger)
+	if err != nil {
+		return fmt.Errorf("failed to create Redis queue client: %w", err)
 	}
-	rbacClient := rbac.NewClient(cfg.RBACEndpoint)
-	zapLogger.Info("RBAC client initialized", zap.String("endpoint", cfg.RBACEndpoint))
+	defer redisQueue.Close()
+	zapLogger.Info("Redis queue client initialized")
+
+	// Initialize OPA enforcer and permission service
+	log := logger.NewLogger(zapLogger)
+	opaEnforcer, err := opa.NewEnforcer(gormDB, cfg.OPA.PolicyPath, cfg.OPA.DataPath, log)
+	if err != nil {
+		return fmt.Errorf("failed to initialize OPA enforcer: %w", err)
+	}
+	permissionService := permission.NewPermissionService(opaEnforcer, log)
+	zapLogger.Info("OPA enforcer and permission service initialized",
+		zap.String("policy_path", cfg.OPA.PolicyPath),
+		zap.String("data_path", cfg.OPA.DataPath))
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(gormDB)
@@ -145,18 +161,44 @@ func runController(cmd *cobra.Command, args []string) error {
 	workspaceRepo := repository.NewWorkspaceRepository(gormDB)
 	volumeRepo := repository.NewVolumeRepository(gormDB)
 	quotaRepo := repository.NewQuotaRepository(gormDB)
+	workspaceTransferRepo := repository.NewWorkspaceTransferRepository(gormDB)
+	settingRepo := repository.NewSettingRepository(gormDB)
 
 	// Initialize message queue event publisher
-	eventPublisher, err := queue.NewEventPublisher(mqClient, zapLogger)
+	eventPublisher, err := queue.NewEventPublisher(redisQueue, zapLogger)
 	if err != nil {
 		return fmt.Errorf("failed to create event publisher: %w", err)
 	}
 
-	// Initialize services
-	userService := services.NewUserService(userRepo, jwtManager, eventPublisher)
+	// Initialize setting service first (needed for JWT configuration)
+	settingService := services.NewSettingService(settingRepo, redis)
+
+	// Setup context for fetching settings
+	initCtx := context.Background()
+
+	// Fetch JWT configuration from database settings
+	accessTokenMinutes := settingService.GetSettingAsInt(initCtx, "access_token_expiration_minutes", 15)
+	refreshTokenDays := settingService.GetSettingAsInt(initCtx, "refresh_token_expiration_days", 30)
+	zapLogger.Info("JWT configuration loaded from database",
+		zap.Int("access_token_minutes", accessTokenMinutes),
+		zap.Int("refresh_token_days", refreshTokenDays))
+
+	// Initialize JWT manager with configuration from database
+	jwtManager := middleware.NewJWTManager(&middleware.JWTConfig{
+		SecretKey:            cfg.JWTSecret,
+		AccessTokenDuration:  time.Duration(accessTokenMinutes) * time.Minute,
+		RefreshTokenDuration: time.Duration(refreshTokenDays) * 24 * time.Hour,
+		RedisClient:          redis,
+	})
+
+	// Initialize login attempt service (needs settingService)
+	loginAttemptService := services.NewLoginAttemptService(redis, settingService)
+
+	userService := services.NewUserService(userRepo, jwtManager, eventPublisher, loginAttemptService)
 	templateService := services.NewTemplateService(templateRepo, orgRepo)
 	volumeService := services.NewVolumeService(volumeRepo, eventPublisher, zapLogger)
 	workspaceService := services.NewWorkspaceService(workspaceRepo, templateRepo, volumeRepo, eventPublisher, zapLogger)
+	workspaceTransferService := services.NewWorkspaceTransferService(workspaceTransferRepo, workspaceRepo, userRepo)
 	quotaService := services.NewQuotaService(quotaRepo, workspaceRepo, volumeRepo)
 
 	// OrganizationService needs UserService for SearchUsersForInvite
@@ -166,12 +208,32 @@ func runController(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Initialize status consumer to receive updates from housekeeper
+	statusConsumer, err := queue.NewStatusConsumer(redisQueue, workspaceRepo, zapLogger)
+	if err != nil {
+		return fmt.Errorf("failed to create status consumer: %w", err)
+	}
+
+	// Start status consumer in a goroutine
+	go func() {
+		if err := statusConsumer.Start(ctx); err != nil {
+			zapLogger.Error("Status consumer error", zap.Error(err))
+		}
+	}()
+
 	// Initialize admin account if ADMIN_PASSWORD is set
 	if cfg.AdminPassword != "" {
-		if err := initializeAdminAccount(ctx, userService, cfg.AdminPassword, zapLogger); err != nil {
+		if err := initializeAdminAccount(ctx, userService, permissionService, cfg.AdminPassword, zapLogger); err != nil {
 			zapLogger.Error("Failed to initialize admin account", zap.Error(err))
 			// Don't fail startup, just log the error
 		}
+	}
+
+	// Initialize default settings
+	zapLogger.Info("Initializing default settings...")
+	if err := settingService.InitializeDefaultSettings(ctx); err != nil {
+		zapLogger.Error("Failed to initialize default settings", zap.Error(err))
+		// Don't fail startup, just log the error
 	}
 
 	// Note: quotaService will be integrated in Phase 2 for resource quota enforcement
@@ -182,11 +244,13 @@ func runController(cmd *cobra.Command, args []string) error {
 	orgHandler := handlers.NewOrganizationHandler(orgService)
 	templateHandler := handlers.NewTemplateHandler(templateService)
 	volumeHandler := handlers.NewVolumeHandler(volumeService)
-	workspaceHandler := handlers.NewWorkspaceHandler(workspaceService)
+	workspaceHandler := handlers.NewWorkspaceHandler(workspaceService, workspaceTransferService)
+	permissionHandler := handlers.NewPermissionHandler(permissionService)
+	settingHandler := handlers.NewSettingHandler(settingService)
 
 	// Create and setup API server
-	server := api.NewServer(gormDB, jwtManager, rbacClient)
-	server.SetupRoutes(userHandler, orgHandler, templateHandler, workspaceHandler, volumeHandler)
+	server := api.NewServer(gormDB, jwtManager, permissionService)
+	server.SetupRoutes(userHandler, orgHandler, templateHandler, workspaceHandler, volumeHandler, permissionHandler, settingHandler)
 
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -221,21 +285,47 @@ func runController(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// initializeAdminAccount creates the admin account if it doesn't exist
-func initializeAdminAccount(ctx context.Context, userService *services.UserService, password string, logger *zap.Logger) error {
+// initializeAdminAccount creates the admin account if it doesn't exist and assigns super_admin role
+func initializeAdminAccount(ctx context.Context, userService *services.UserService, permissionService *permission.PermissionService, password string, logger *zap.Logger) error {
 	// Check if admin user already exists
-	_, err := userService.GetUserByUsername(ctx, "admin")
+	user, err := userService.GetUserByUsername(ctx, "admin")
 	if err == nil {
-		logger.Info("Admin account already exists, skipping initialization")
+		logger.Info("Admin account already exists, checking role binding...")
+
+		// Check if admin already has super_admin role binding
+		roles, err := permissionService.GetUserRoles(ctx, user.ID)
+		if err != nil {
+			logger.Warn("Failed to get admin roles", zap.Error(err))
+		} else {
+			hasSuperAdmin := false
+			for _, role := range roles {
+				if role == "role:super_admin" {
+					hasSuperAdmin = true
+					break
+				}
+			}
+
+			if !hasSuperAdmin {
+				logger.Info("Assigning super_admin role to admin user...")
+				if err := permissionService.AssignRole(ctx, user.ID, "role:super_admin"); err != nil {
+					logger.Error("Failed to assign super_admin role to admin", zap.Error(err))
+				} else {
+					logger.Info("Super_admin role assigned to admin successfully")
+				}
+			} else {
+				logger.Info("Admin user already has super_admin role")
+			}
+		}
+
 		return nil
 	}
 
 	// Admin user doesn't exist, create it
 	logger.Info("Creating admin account...")
-	
+
 	email := "admin@idekube.local"
 	displayName := "System Administrator"
-	
+
 	adminUser := &models.CreateUserRequest{
 		Username:    "admin",
 		Email:       &email,
@@ -244,16 +334,24 @@ func initializeAdminAccount(ctx context.Context, userService *services.UserServi
 		DisplayName: &displayName,
 	}
 
-	_, err = userService.CreateUser(ctx, adminUser)
+	createdUser, err := userService.CreateUser(ctx, adminUser)
 	if err != nil {
 		return fmt.Errorf("failed to create admin account: %w", err)
 	}
 
 	logger.Info("Admin account created successfully",
 		zap.String("username", "admin"),
-		zap.String("email", email))
+		zap.String("email", email),
+		zap.Int64("user_id", createdUser.ID))
+
+	// Assign super_admin role via OPA
+	if err := permissionService.AssignRole(ctx, createdUser.ID, "role:super_admin"); err != nil {
+		logger.Error("Failed to assign super_admin role to newly created admin", zap.Error(err))
+	} else {
+		logger.Info("Super_admin role assigned to admin successfully")
+	}
+
 	logger.Warn("IMPORTANT: Please change the admin password after first login!")
 
 	return nil
 }
-

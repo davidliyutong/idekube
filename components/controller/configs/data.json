@@ -1,0 +1,190 @@
+{
+  "role_bindings": {},
+  "policies": [
+    {
+      "subject": "role:super_admin",
+      "object": "*",
+      "action": "*"
+    },
+    {
+      "subject": "role:admin",
+      "object": "user",
+      "action": "list"
+    },
+    {
+      "subject": "role:admin",
+      "object": "user",
+      "action": "read"
+    },
+    {
+      "subject": "role:admin",
+      "object": "user",
+      "action": "create"
+    },
+    {
+      "subject": "role:admin",
+      "object": "user",
+      "action": "update"
+    },
+    {
+      "subject": "role:admin",
+      "object": "user",
+      "action": "delete"
+    },
+    {
+      "subject": "role:admin",
+      "object": "organization",
+      "action": "list"
+    },
+    {
+      "subject": "role:admin",
+      "object": "organization",
+      "action": "read"
+    },
+    {
+      "subject": "role:admin",
+      "object": "workspace",
+      "action": "list"
+    },
+    {
+      "subject": "role:admin",
+      "object": "workspace",
+      "action": "read"
+    },
+    {
+      "subject": "role:admin",
+      "object": "workspace",
+      "action": "update"
+    },
+    {
+      "subject": "role:admin",
+      "object": "workspace",
+      "action": "delete"
+    },
+    {
+      "subject": "role:admin",
+      "object": "volume",
+      "action": "list"
+    },
+    {
+      "subject": "role:admin",
+      "object": "volume",
+      "action": "read"
+    },
+    {
+      "subject": "role:admin",
+      "object": "template",
+      "action": "list"
+    },
+    {
+      "subject": "role:admin",
+      "object": "template",
+      "action": "read"
+    },
+    {
+      "subject": "role:admin",
+      "object": "settings",
+      "action": "list"
+    },
+    {
+      "subject": "role:admin",
+      "object": "settings",
+      "action": "read"
+    },
+    {
+      "subject": "role:admin",
+      "object": "settings",
+      "action": "update"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "organization",
+      "action": "create"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "organization",
+      "action": "read"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "workspace",
+      "action": "create"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "workspace",
+      "action": "read"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "workspace:own",
+      "action": "*"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "volume",
+      "action": "create"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "volume",
+      "action": "read"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "volume:own",
+      "action": "*"
+    },
+    {
+      "subject": "role:power_user",
+      "object": "template",
+      "action": "read"
+    },
+    {
+      "subject": "role:user",
+      "object": "organization",
+      "action": "create"
+    },
+    {
+      "subject": "role:user",
+      "object": "organization",
+      "action": "read"
+    },
+    {
+      "subject": "role:user",
+      "object": "workspace",
+      "action": "create"
+    },
+    {
+      "subject": "role:user",
+      "object": "workspace",
+      "action": "read"
+    },
+    {
+      "subject": "role:user",
+      "object": "workspace:own",
+      "action": "*"
+    },
+    {
+      "subject": "role:user",
+      "object": "volume",
+      "action": "create"
+    },
+    {
+      "subject": "role:user",
+      "object": "volume",
+      "action": "read"
+    },
+    {
+      "subject": "role:user",
+      "object": "volume:own",
+      "action": "*"
+    },
+    {
+      "subject": "role:user",
+      "object": "template",
+      "action": "read"
+    }
+  ]
+}

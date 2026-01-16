@@ -282,6 +282,25 @@ CREATE TABLE oauth_sessions (
 CREATE INDEX idx_oauth_sessions_key ON oauth_sessions(key);
 CREATE INDEX idx_oauth_sessions_expires_at ON oauth_sessions(expires_at);
 
+-- Workspace transfers table
+CREATE TABLE workspace_transfers (
+    id BIGSERIAL PRIMARY KEY,
+    workspace_id BIGINT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    from_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    to_username VARCHAR(255) NOT NULL,
+    to_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, accepted, rejected, cancelled
+    message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    responded_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_workspace_transfers_workspace_id ON workspace_transfers(workspace_id);
+CREATE INDEX idx_workspace_transfers_from_user_id ON workspace_transfers(from_user_id);
+CREATE INDEX idx_workspace_transfers_to_user_id ON workspace_transfers(to_user_id);
+CREATE INDEX idx_workspace_transfers_status ON workspace_transfers(status);
+
 -- Function to automatically update updated_at timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -318,6 +337,91 @@ CREATE TRIGGER update_webhooks_updated_at BEFORE UPDATE ON webhooks
 
 CREATE TRIGGER update_oauth_sessions_updated_at BEFORE UPDATE ON oauth_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_workspace_transfers_updated_at BEFORE UPDATE ON workspace_transfers
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- OPA RBAC Tables
+
+-- Create OPA policy table
+CREATE TABLE IF NOT EXISTS opa_policies (
+    id SERIAL PRIMARY KEY,
+    subject VARCHAR(255) NOT NULL,
+    object VARCHAR(255) NOT NULL,
+    action VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_opa_policies_subject ON opa_policies(subject);
+CREATE INDEX IF NOT EXISTS idx_opa_policies_object ON opa_policies(object);
+CREATE INDEX IF NOT EXISTS idx_opa_policies_action ON opa_policies(action);
+
+-- Create OPA role bindings table
+CREATE TABLE IF NOT EXISTS opa_role_bindings (
+    id SERIAL PRIMARY KEY,
+    subject VARCHAR(255) NOT NULL,
+    role VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes for faster lookups
+CREATE INDEX IF NOT EXISTS idx_opa_role_bindings_subject ON opa_role_bindings(subject);
+CREATE INDEX IF NOT EXISTS idx_opa_role_bindings_role ON opa_role_bindings(role);
+
+-- Ensure unique constraint
+CREATE UNIQUE INDEX IF NOT EXISTS idx_opa_role_bindings_unique ON opa_role_bindings(subject, role);
+
+-- Add triggers for OPA tables
+CREATE TRIGGER update_opa_policies_updated_at BEFORE UPDATE ON opa_policies
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_opa_role_bindings_updated_at BEFORE UPDATE ON opa_role_bindings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Add comments for documentation
+COMMENT ON TABLE opa_policies IS 'Stores OPA RBAC policy rules';
+COMMENT ON COLUMN opa_policies.subject IS 'Subject (user/role) for policy rules';
+COMMENT ON COLUMN opa_policies.object IS 'Object (resource) for policy rules';
+COMMENT ON COLUMN opa_policies.action IS 'Action (read/write/delete) for policy rules';
+
+COMMENT ON TABLE opa_role_bindings IS 'Stores OPA role assignments to users';
+COMMENT ON COLUMN opa_role_bindings.subject IS 'Subject (user) identifier';
+COMMENT ON COLUMN opa_role_bindings.role IS 'Role identifier';
+
+-- Settings table
+CREATE TABLE settings (
+    key VARCHAR(255) PRIMARY KEY,
+    value VARCHAR(500) NOT NULL,
+    value_type VARCHAR(50) NOT NULL DEFAULT 'string', -- string, int, bool
+    description TEXT,
+    category VARCHAR(100) NOT NULL DEFAULT 'general', -- general, auth, security, etc.
+    is_public BOOLEAN NOT NULL DEFAULT false, -- if true, can be read without admin privileges
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_settings_category ON settings(category);
+CREATE INDEX idx_settings_is_public ON settings(is_public);
+
+-- Add trigger for settings
+CREATE TRIGGER update_settings_updated_at BEFORE UPDATE ON settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE settings IS 'Stores system configuration settings';
+COMMENT ON COLUMN settings.key IS 'Unique configuration key';
+COMMENT ON COLUMN settings.value IS 'Configuration value as string';
+COMMENT ON COLUMN settings.value_type IS 'Type of the value (string, int, bool)';
+COMMENT ON COLUMN settings.is_public IS 'Whether non-admin users can read this setting';
+
+-- Initialize default settings
+INSERT INTO settings (key, value, value_type, description, category, is_public) VALUES
+    ('access_token_expiration_minutes', '15', 'int', 'Access token expiration time in minutes', 'auth', false),
+    ('refresh_token_expiration_days', '30', 'int', 'Refresh token expiration time in days', 'auth', false),
+    ('login_max_attempts', '5', 'int', 'Maximum login attempts before account is temporarily locked', 'security', false),
+    ('login_ban_duration_minutes', '15', 'int', 'Duration of temporary account lock in minutes', 'security', false);
 
 -- Note: Admin user will be created automatically by the application
 -- if ADMIN_PASSWORD environment variable is set

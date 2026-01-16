@@ -62,3 +62,17 @@ type MFASetup struct {
 	QRCode      string   `json:"qr_code"`
 	BackupCodes []string `json:"backup_codes"`
 }
+
+// TokenPair represents access and refresh tokens
+type TokenPair struct {
+	AccessToken           string    `json:"access_token"`
+	RefreshToken          string    `json:"refresh_token"`
+	AccessTokenExpiresAt  time.Time `json:"access_token_expires_at"`
+	RefreshTokenExpiresAt time.Time `json:"refresh_token_expires_at"`
+	TokenType             string    `json:"token_type"`
+}
+
+// RefreshTokenRequest represents a refresh token request
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}

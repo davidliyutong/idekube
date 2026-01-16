@@ -226,7 +226,8 @@ func (s *WorkspaceService) StartWorkspace(ctx context.Context, id int64) error {
 	}
 
 	// Publish start event
-	if err := s.eventPublisher.PublishWorkspaceStart(ctx, workspace); err != nil {
+	// TODO: Fetch template and volumes for event publishing
+	if err := s.eventPublisher.PublishWorkspaceStart(ctx, workspace, nil, nil); err != nil {
 		s.logger.Error("Failed to publish workspace start event",
 			zap.Int64("workspace_id", id),
 			zap.Error(err))
@@ -250,7 +251,7 @@ func (s *WorkspaceService) StopWorkspace(ctx context.Context, id int64) error {
 	}
 
 	// Publish stop event
-	if err := s.eventPublisher.PublishWorkspaceStop(ctx, workspace, "User requested stop"); err != nil {
+	if err := s.eventPublisher.PublishWorkspaceStop(ctx, workspace); err != nil {
 		s.logger.Error("Failed to publish workspace stop event",
 			zap.Int64("workspace_id", id),
 			zap.Error(err))

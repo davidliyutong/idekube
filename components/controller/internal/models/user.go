@@ -81,9 +81,12 @@ type LoginRequest struct {
 
 // LoginResponse represents the login response
 type LoginResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	User      *User     `json:"user"`
+	AccessToken           string    `json:"access_token"`
+	RefreshToken          string    `json:"refresh_token"`
+	AccessTokenExpiresAt  time.Time `json:"access_token_expires_at"`
+	RefreshTokenExpiresAt time.Time `json:"refresh_token_expires_at"`
+	TokenType             string    `json:"token_type"`
+	User                  *User     `json:"user"`
 }
 
 // UpdateUserProfileRequest represents the request for a user to update their own profile

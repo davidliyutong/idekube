@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 
 	"github.com/davidliyutong/idekube-controller/internal/repository"
@@ -13,19 +12,19 @@ import (
 
 // StatusConsumer consumes status change events from HouseKeeper
 type StatusConsumer struct {
-	mq            *RabbitMQClient
+	queue         *RedisQueueClient
 	workspaceRepo *repository.WorkspaceRepository
 	logger        *zap.Logger
 }
 
 // NewStatusConsumer creates a new status consumer
 func NewStatusConsumer(
-	mq *RabbitMQClient,
+	queue *RedisQueueClient,
 	workspaceRepo *repository.WorkspaceRepository,
 	logger *zap.Logger,
 ) (*StatusConsumer, error) {
-	if mq == nil {
-		return nil, fmt.Errorf("rabbitmq client is required")
+	if queue == nil {
+		return nil, fmt.Errorf("redis queue client is required")
 	}
 	if workspaceRepo == nil {
 		return nil, fmt.Errorf("workspace repository is required")
@@ -35,7 +34,7 @@ func NewStatusConsumer(
 	}
 
 	return &StatusConsumer{
-		mq:            mq,
+		queue:         queue,
 		workspaceRepo: workspaceRepo,
 		logger:        logger,
 	}, nil
@@ -43,54 +42,27 @@ func NewStatusConsumer(
 
 // Start starts consuming status change events
 func (c *StatusConsumer) Start(ctx context.Context) error {
-	channel := c.mq.Channel()
+	c.logger.Info("Status consumer started", zap.String("stream", StreamControllerStatus))
 
-	// Start consuming
-	msgs, err := channel.Consume(
-		QueueControllerStatus,        // queue
-		"controller-status-consumer", // consumer tag
-		false,                        // auto-ack
-		false,                        // exclusive
-		false,                        // no-local
-		false,                        // no-wait
-		nil,                          // args
+	// Subscribe to the status stream
+	return c.queue.Subscribe(
+		ctx,
+		StreamControllerStatus,
+		ConsumerGroupControllerStatus,
+		"controller-status-consumer",
+		c.handleMessage,
 	)
-	if err != nil {
-		return fmt.Errorf("failed to start consuming: %w", err)
-	}
-
-	c.logger.Info("Status consumer started", zap.String("queue", QueueControllerStatus))
-
-	// Process messages
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				c.logger.Info("Status consumer stopped")
-				return
-			case msg, ok := <-msgs:
-				if !ok {
-					c.logger.Warn("Message channel closed")
-					return
-				}
-				c.handleMessage(ctx, msg)
-			}
-		}
-	}()
-
-	return nil
 }
 
 // handleMessage handles a single message
-func (c *StatusConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) {
+func (c *StatusConsumer) handleMessage(data []byte) error {
 	// Parse event
 	var event StatusChangeEvent
-	if err := json.Unmarshal(msg.Body, &event); err != nil {
+	if err := json.Unmarshal(data, &event); err != nil {
 		c.logger.Error("Failed to unmarshal status change event",
 			zap.Error(err),
-			zap.String("body", string(msg.Body)))
-		msg.Nack(false, false) // Don't requeue malformed messages
-		return
+			zap.String("body", string(data)))
+		return err
 	}
 
 	c.logger.Info("Received status change event",
@@ -100,17 +72,15 @@ func (c *StatusConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) {
 		zap.String("reason", event.Reason))
 
 	// Handle event
+	ctx := context.Background()
 	if err := c.handleStatusChange(ctx, &event); err != nil {
 		c.logger.Error("Failed to handle status change",
 			zap.Int64("workspace_id", event.WorkspaceID),
 			zap.Error(err))
-		// Requeue the message for retry
-		msg.Nack(false, true)
-		return
+		return err
 	}
 
-	// Acknowledge message
-	msg.Ack(false)
+	return nil
 }
 
 // handleStatusChange processes a status change event

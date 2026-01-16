@@ -97,3 +97,47 @@ type AttachVolumeRequest struct {
 type WorkspaceActionRequest struct {
 	Action string `json:"action" binding:"required"` // start, stop, restart
 }
+
+// WorkspaceTransferStatus represents the status of a workspace transfer
+type WorkspaceTransferStatus string
+
+const (
+	WorkspaceTransferStatusPending   WorkspaceTransferStatus = "pending"
+	WorkspaceTransferStatusAccepted  WorkspaceTransferStatus = "accepted"
+	WorkspaceTransferStatusRejected  WorkspaceTransferStatus = "rejected"
+	WorkspaceTransferStatusCancelled WorkspaceTransferStatus = "cancelled"
+)
+
+// WorkspaceTransfer represents a workspace ownership transfer request
+type WorkspaceTransfer struct {
+	ID          int64                   `json:"id" db:"id"`
+	WorkspaceID int64                   `json:"workspace_id" db:"workspace_id"`
+	FromUserID  int64                   `json:"from_user_id" db:"from_user_id"`
+	ToUsername  string                  `json:"to_username" db:"to_username"`
+	ToUserID    *int64                  `json:"to_user_id,omitempty" db:"to_user_id"`
+	Status      WorkspaceTransferStatus `json:"status" db:"status"`
+	Message     *string                 `json:"message,omitempty" db:"message"`
+	CreatedAt   time.Time               `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time               `json:"updated_at" db:"updated_at"`
+	RespondedAt *time.Time              `json:"responded_at,omitempty" db:"responded_at"`
+}
+
+// WorkspaceTransferWithDetails represents a transfer with workspace and user details
+type WorkspaceTransferWithDetails struct {
+	WorkspaceTransfer
+	Workspace *Workspace `json:"workspace,omitempty"`
+	FromUser  *User      `json:"from_user,omitempty"`
+	ToUser    *User      `json:"to_user,omitempty"`
+}
+
+// CreateWorkspaceTransferRequest represents the request to create a transfer
+type CreateWorkspaceTransferRequest struct {
+	ToUsername string  `json:"to_username" binding:"required"`
+	Message    *string `json:"message,omitempty"`
+}
+
+// RespondWorkspaceTransferRequest represents the request to respond to a transfer
+type RespondWorkspaceTransferRequest struct {
+	Accept  bool    `json:"accept" binding:"required"`
+	Message *string `json:"message,omitempty"`
+}

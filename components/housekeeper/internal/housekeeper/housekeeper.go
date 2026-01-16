@@ -13,14 +13,14 @@ import (
 type Housekeeper struct {
 	k8sClient *k8s.Client
 	db        *database.PostgresClient
-	mq        *queue.RabbitMQClient
+	mq        *queue.RedisQueueClient
 	log       *logger.Logger
 }
 
 func NewHousekeeper(
 	k8sClient *k8s.Client,
 	db *database.PostgresClient,
-	mq *queue.RabbitMQClient,
+	mq *queue.RedisQueueClient,
 	log *logger.Logger,
 ) *Housekeeper {
 	return &Housekeeper{

@@ -15,25 +15,48 @@ import (
 
 // UserService handles user business logic
 type UserService struct {
-	userRepo       *repository.UserRepository
-	jwtManager     *middleware.JWTManager
-	eventPublisher *queue.EventPublisher
+	userRepo            *repository.UserRepository
+	jwtManager          *middleware.JWTManager
+	eventPublisher      *queue.EventPublisher
+	loginAttemptService *LoginAttemptService
 }
 
 // NewUserService creates a new user service
-func NewUserService(userRepo *repository.UserRepository, jwtManager *middleware.JWTManager, eventPublisher *queue.EventPublisher) *UserService {
+func NewUserService(
+	userRepo *repository.UserRepository,
+	jwtManager *middleware.JWTManager,
+	eventPublisher *queue.EventPublisher,
+	loginAttemptService *LoginAttemptService,
+) *UserService {
 	return &UserService{
-		userRepo:       userRepo,
-		jwtManager:     jwtManager,
-		eventPublisher: eventPublisher,
+		userRepo:            userRepo,
+		jwtManager:          jwtManager,
+		eventPublisher:      eventPublisher,
+		loginAttemptService: loginAttemptService,
 	}
 }
 
 // Login authenticates a user and returns a token
 func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error) {
+	// Check if user is banned
+	if s.loginAttemptService != nil {
+		banned, remainingTime, err := s.loginAttemptService.IsUserBanned(ctx, req.Username)
+		if err != nil {
+			zap.L().Error("Failed to check ban status", zap.Error(err))
+		} else if banned {
+			return nil, fmt.Errorf("account temporarily locked due to too many failed login attempts, try again in %v", remainingTime.Round(time.Second))
+		}
+	}
+
 	// Get user by username
 	user, err := s.userRepo.GetByUsername(ctx, req.Username)
 	if err != nil {
+		// Record failed attempt
+		if s.loginAttemptService != nil {
+			if err := s.loginAttemptService.RecordFailedAttempt(ctx, req.Username); err != nil {
+				zap.L().Error("Failed to record failed login attempt", zap.Error(err))
+			}
+		}
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
@@ -45,11 +68,24 @@ func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 	// Verify password
 	err = utils.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil {
+		// Record failed attempt
+		if s.loginAttemptService != nil {
+			if err := s.loginAttemptService.RecordFailedAttempt(ctx, req.Username); err != nil {
+				zap.L().Error("Failed to record failed login attempt", zap.Error(err))
+			}
+		}
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	// Generate JWT token
-	token, expiresAt, err := s.jwtManager.GenerateToken(user)
+	// Reset failed attempts on successful login
+	if s.loginAttemptService != nil {
+		if err := s.loginAttemptService.ResetFailedAttempts(ctx, req.Username); err != nil {
+			zap.L().Error("Failed to reset failed login attempts", zap.Error(err))
+		}
+	}
+
+	// Generate JWT token pair
+	tokenPair, err := s.jwtManager.GenerateTokenPair(ctx, user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
@@ -58,9 +94,12 @@ func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
 
 	return &models.LoginResponse{
-		Token:     token,
-		ExpiresAt: expiresAt,
-		User:      user,
+		AccessToken:           tokenPair.AccessToken,
+		RefreshToken:          tokenPair.RefreshToken,
+		AccessTokenExpiresAt:  tokenPair.AccessTokenExpiresAt,
+		RefreshTokenExpiresAt: tokenPair.RefreshTokenExpiresAt,
+		TokenType:             tokenPair.TokenType,
+		User:                  user,
 	}, nil
 }
 
@@ -106,6 +145,7 @@ func (s *UserService) GetUserByID(ctx context.Context, id int64) (*models.User, 
 	}
 	return user, nil
 }
+
 // GetUserByUsername retrieves a user by username
 func (s *UserService) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	user, err := s.userRepo.GetByUsername(ctx, username)
@@ -114,6 +154,7 @@ func (s *UserService) GetUserByUsername(ctx context.Context, username string) (*
 	}
 	return user, nil
 }
+
 // ListUsers lists users with pagination
 func (s *UserService) ListUsers(ctx context.Context, opts *models.ListOptions) ([]*models.User, int64, error) {
 	return s.userRepo.List(ctx, opts)
@@ -298,4 +339,44 @@ func (s *UserService) SearchUsers(ctx context.Context, query string, opts *model
 // ListAllUsers lists all users (for admin)
 func (s *UserService) ListAllUsers(ctx context.Context, opts *models.ListOptions) ([]*models.User, int64, error) {
 	return s.userRepo.ListAll(ctx, opts)
+}
+
+// RefreshToken generates a new access token from a refresh token
+func (s *UserService) RefreshToken(ctx context.Context, refreshToken string) (*models.LoginResponse, error) {
+	// Generate new token pair using JWT manager
+	tokenPair, err := s.jwtManager.RefreshAccessToken(ctx, refreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	// Get user info (from the claims embedded in the new tokens)
+	// We validate the access token to extract user info
+	claims, err := s.jwtManager.ValidateToken(tokenPair.AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate new access token: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	return &models.LoginResponse{
+		AccessToken:           tokenPair.AccessToken,
+		RefreshToken:          tokenPair.RefreshToken,
+		AccessTokenExpiresAt:  tokenPair.AccessTokenExpiresAt,
+		RefreshTokenExpiresAt: tokenPair.RefreshTokenExpiresAt,
+		TokenType:             tokenPair.TokenType,
+		User:                  user,
+	}, nil
+}
+
+// RevokeRefreshToken revokes a specific refresh token
+func (s *UserService) RevokeRefreshToken(ctx context.Context, userID int64, tokenID string) error {
+	return s.jwtManager.RevokeRefreshToken(ctx, userID, tokenID)
+}
+
+// RevokeAllRefreshTokens revokes all refresh tokens for a user
+func (s *UserService) RevokeAllRefreshTokens(ctx context.Context, userID int64) error {
+	return s.jwtManager.RevokeAllRefreshTokens(ctx, userID)
 }

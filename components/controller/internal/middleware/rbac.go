@@ -7,22 +7,22 @@ import (
 	"strings"
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
-	"github.com/davidliyutong/idekube-controller/pkg/rbac"
+	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/gin-gonic/gin"
 )
 
 // RBACMiddleware creates middleware for RBAC permission checking
-func RBACMiddleware(rbacClient *rbac.Client) gin.HandlerFunc {
+func RBACMiddleware(permService *permission.PermissionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// This is a base middleware that just ensures RBAC client is available
+		// This is a base middleware that just ensures permission service is available
 		// Actual permission checks are done in route-specific middleware
-		c.Set("rbac_client", rbacClient)
+		c.Set("permission_service", permService)
 		c.Next()
 	}
 }
 
 // RBACCheck creates a middleware that checks specific permissions
-func RBACCheck(rbacClient *rbac.Client, resourceType, action string) gin.HandlerFunc {
+func RBACCheck(permService *permission.PermissionService, resourceType, action string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -43,8 +43,8 @@ func RBACCheck(rbacClient *rbac.Client, resourceType, action string) gin.Handler
 			resourceID = idParam
 		}
 
-		// Check permission with RBAC service
-		allowed, err := rbacClient.CheckPermission(c.Request.Context(), &rbac.CheckPermissionRequest{
+		// Check permission with permission service
+		allowed, err := permService.CheckPermission(c.Request.Context(), permission.CheckPermissionRequest{
 			UserID:       userID.(int64),
 			ResourceType: resourceType,
 			ResourceID:   resourceID,
@@ -81,7 +81,7 @@ func RBACCheck(rbacClient *rbac.Client, resourceType, action string) gin.Handler
 
 // RBACCheckEndpoint creates middleware that checks API endpoint-level permissions
 // This is the new unified approach that replaces role-based middleware
-func RBACCheckEndpoint(rbacClient *rbac.Client, resourceType string) gin.HandlerFunc {
+func RBACCheckEndpoint(permService *permission.PermissionService, resourceType string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
 		if !exists {
@@ -108,8 +108,8 @@ func RBACCheckEndpoint(rbacClient *rbac.Client, resourceType string) gin.Handler
 			resourceID = userIDParam
 		}
 
-		// Check permission with RBAC service
-		allowed, err := rbacClient.CheckPermission(c.Request.Context(), &rbac.CheckPermissionRequest{
+		// Check permission with permission service
+		allowed, err := permService.CheckPermission(c.Request.Context(), permission.CheckPermissionRequest{
 			UserID:       userID.(int64),
 			ResourceType: resourceType,
 			ResourceID:   resourceID,

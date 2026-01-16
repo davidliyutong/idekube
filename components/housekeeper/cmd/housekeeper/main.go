@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,12 +39,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize RabbitMQ connection
-	mqClient, err := queue.NewRabbitMQClient(cfg.RabbitMQ)
+	// Initialize Redis queue client
+	redisAddr := fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)
+	mqClient, err := queue.NewRedisQueueClient(redisAddr, cfg.Redis.Password, cfg.Redis.DB, log)
 	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+		log.Fatalf("Failed to create Redis queue client: %v", err)
 	}
 	defer mqClient.Close()
+	log.Info("Redis queue client initialized")
 
 	// Create housekeeper
 	hk := housekeeper.NewHousekeeper(k8sClient, db, mqClient, log)

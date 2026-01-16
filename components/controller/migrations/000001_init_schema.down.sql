@@ -1,6 +1,7 @@
 -- Drop all tables in reverse order to respect foreign key constraints
 -- Note: deleted_at columns are part of table structure, no separate cleanup needed
 
+DROP TABLE IF EXISTS workspace_transfers;
 DROP TABLE IF EXISTS oauth_sessions;
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS webhooks;
@@ -15,6 +16,11 @@ DROP TABLE IF EXISTS quotas;
 DROP TABLE IF EXISTS organization_members;
 DROP TABLE IF EXISTS organizations;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS settings;
+
+-- Drop OPA RBAC tables
+DROP TABLE IF EXISTS opa_role_bindings;
+DROP TABLE IF EXISTS opa_policies;
 
 -- Drop function
 DROP FUNCTION IF EXISTS update_updated_at_column();

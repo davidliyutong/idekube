@@ -54,7 +54,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 		// Add random delay to prevent timing attacks
 		delay := time.Duration(100+rand.Intn(400)) * time.Millisecond
 		time.Sleep(delay)
-		
+
 		c.JSON(http.StatusUnauthorized, models.APIResponse{
 			Success: false,
 			Error: &models.APIError{
@@ -112,6 +112,82 @@ func (h *UserHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, models.APIResponse{
 		Success: true,
 		Data:    user,
+	})
+}
+
+// RefreshToken godoc
+// @Summary 刷新访问令牌
+// @Description 使用刷新令牌获取新的访问令牌和刷新令牌
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Param request body models.RefreshTokenRequest true "刷新令牌请求"
+// @Success 200 {object} models.APIResponse{data=models.LoginResponse} "刷新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "令牌无效"
+// @Router /auth/refresh [post]
+func (h *UserHandler) RefreshToken(c *gin.Context) {
+	var req models.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request body",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	response, err := h.userService.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "REFRESH_FAILED",
+				Message: "Failed to refresh token",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    response,
+	})
+}
+
+// Logout godoc
+// @Summary 用户登出
+// @Description 撤销用户的所有刷新令牌
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} models.APIResponse "登出成功"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /auth/logout [post]
+func (h *UserHandler) Logout(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+
+	// Revoke all refresh tokens for the user
+	if err := h.userService.RevokeAllRefreshTokens(c.Request.Context(), userID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "LOGOUT_FAILED",
+				Message: "Failed to logout",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Logged out successfully",
 	})
 }
 

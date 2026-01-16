@@ -8,7 +8,7 @@ import (
 	"github.com/davidliyutong/idekube-controller/internal/handlers"
 	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
-	"github.com/davidliyutong/idekube-controller/pkg/rbac"
+	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -17,16 +17,16 @@ import (
 
 // Server represents the API server
 type Server struct {
-	router     *gin.Engine
-	httpServer *http.Server
-	db         *gorm.DB
-	jwtManager *middleware.JWTManager
-	rbacClient *rbac.Client
-	rateLimiter *middleware.RateLimiter
+	router            *gin.Engine
+	httpServer        *http.Server
+	db                *gorm.DB
+	jwtManager        *middleware.JWTManager
+	permissionService *permission.PermissionService
+	rateLimiter       *middleware.RateLimiter
 }
 
 // NewServer creates a new API server
-func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, rbacClient *rbac.Client) *Server {
+func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, permissionService *permission.PermissionService) *Server {
 	// Create rate limiter: 100 requests per minute per IP
 	rateLimiter := middleware.NewRateLimiter(middleware.RateLimitConfig{
 		RequestsPerMinute: 100,
@@ -34,11 +34,11 @@ func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, rbacClient *rbac.
 	})
 
 	return &Server{
-		router:      gin.Default(),
-		db:          db,
-		jwtManager:  jwtManager,
-		rbacClient:  rbacClient,
-		rateLimiter: rateLimiter,
+		router:            gin.Default(),
+		db:                db,
+		jwtManager:        jwtManager,
+		permissionService: permissionService,
+		rateLimiter:       rateLimiter,
 	}
 }
 
@@ -49,12 +49,14 @@ func (s *Server) SetupRoutes(
 	templateHandler *handlers.TemplateHandler,
 	workspaceHandler *handlers.WorkspaceHandler,
 	volumeHandler *handlers.VolumeHandler,
+	permissionHandler *handlers.PermissionHandler,
+	settingHandler *handlers.SettingHandler,
 ) {
 	// Apply global middleware
-	s.router.Use(middleware.SecurityMiddleware())                      // Security headers
-	s.router.Use(middleware.RateLimitMiddleware(s.rateLimiter))        // Rate limiting
+	s.router.Use(middleware.SecurityMiddleware())                         // Security headers
+	s.router.Use(middleware.RateLimitMiddleware(s.rateLimiter))           // Rate limiting
 	s.router.Use(middleware.RequestSizeLimitMiddleware(10 * 1024 * 1024)) // 10MB request size limit
-	s.router.Use(middleware.MaliciousRouteInterceptor())               // Block suspicious routes
+	s.router.Use(middleware.MaliciousRouteInterceptor())                  // Block suspicious routes
 	s.router.Use(middleware.CORSMiddleware())
 	s.router.Use(middleware.RequestIDMiddleware())
 	s.router.Use(middleware.AuditMiddleware(s.db))
@@ -82,6 +84,7 @@ func (s *Server) SetupRoutes(
 		{
 			auth.POST("/login", userHandler.Login)
 			auth.POST("/register", userHandler.Register)
+			auth.POST("/refresh", userHandler.RefreshToken)
 			// TODO: Add OIDC routes
 			// auth.GET("/oidc/login", oidcHandler.Login)
 			// auth.GET("/oidc/callback", oidcHandler.Callback)
@@ -93,11 +96,16 @@ func (s *Server) SetupRoutes(
 		protected := v1.Group("")
 		protected.Use(middleware.AuthMiddleware(s.jwtManager))
 		protected.Use(middleware.RequireAuth())
-		protected.Use(middleware.RBACMiddleware(s.rbacClient))
+		protected.Use(middleware.RBACMiddleware(s.permissionService))
 		{
+			// Additional auth routes (require authentication)
+			protectedAuth := protected.Group("/auth")
+			{
+				protectedAuth.POST("/logout", userHandler.Logout)
+			}
 			// User routes
 			users := protected.Group("/users")
-			users.Use(middleware.RBACCheckEndpoint(s.rbacClient, "user"))
+			users.Use(middleware.RBACCheckEndpoint(s.permissionService, "user"))
 			{
 				// Self-service routes (all authenticated users)
 				users.GET("/me", userHandler.GetProfile)
@@ -114,11 +122,16 @@ func (s *Server) SetupRoutes(
 				users.POST("", userHandler.CreateUser)
 				users.PUT("/:id", userHandler.UpdateUser)
 				users.DELETE("/:id", userHandler.DeleteUser)
+
+				// Role management (admin only)
+				users.POST("/:user_id/roles", permissionHandler.AssignRole)
+				users.DELETE("/:user_id/roles", permissionHandler.RemoveRole)
+				users.GET("/:user_id/roles", permissionHandler.GetUserRoles)
 			}
 
 			// Organization routes
 			orgs := protected.Group("/organizations")
-			orgs.Use(middleware.RBACCheckEndpoint(s.rbacClient, "organization"))
+			orgs.Use(middleware.RBACCheckEndpoint(s.permissionService, "organization"))
 			{
 				// All authenticated users can create organizations
 				orgs.POST("", orgHandler.CreateOrganization)
@@ -146,7 +159,7 @@ func (s *Server) SetupRoutes(
 
 			// Template routes
 			templates := protected.Group("/templates")
-			templates.Use(middleware.RBACCheckEndpoint(s.rbacClient, "template"))
+			templates.Use(middleware.RBACCheckEndpoint(s.permissionService, "template"))
 			{
 				// List templates (supports ?all=true for admins)
 				templates.GET("", templateHandler.ListTemplates)
@@ -160,7 +173,7 @@ func (s *Server) SetupRoutes(
 
 			// Workspace routes
 			workspaces := protected.Group("/workspaces")
-			workspaces.Use(middleware.RBACCheckEndpoint(s.rbacClient, "workspace"))
+			workspaces.Use(middleware.RBACCheckEndpoint(s.permissionService, "workspace"))
 			{
 				// List workspaces (supports ?organization_id= filter)
 				workspaces.GET("", workspaceHandler.ListWorkspaces)
@@ -178,11 +191,24 @@ func (s *Server) SetupRoutes(
 				// Volume management
 				workspaces.POST("/:id/volumes/:volume_id", workspaceHandler.AttachVolume)
 				workspaces.DELETE("/:id/volumes/:volume_id", workspaceHandler.DetachVolume)
+
+				// Workspace transfer
+				workspaces.POST("/:id/transfer", workspaceHandler.InitiateTransfer)
+			}
+
+			// Workspace transfer routes
+			workspaceTransfers := protected.Group("/workspace-transfers")
+			workspaceTransfers.Use(middleware.RBACCheckEndpoint(s.permissionService, "workspace"))
+			{
+				workspaceTransfers.GET("/pending", workspaceHandler.ListPendingTransfers)
+				workspaceTransfers.GET("/:transfer_id", workspaceHandler.GetTransfer)
+				workspaceTransfers.POST("/:transfer_id/respond", workspaceHandler.RespondToTransfer)
+				workspaceTransfers.POST("/:transfer_id/cancel", workspaceHandler.CancelTransfer)
 			}
 
 			// Volume routes
 			volumes := protected.Group("/volumes")
-			volumes.Use(middleware.RBACCheckEndpoint(s.rbacClient, "volume"))
+			volumes.Use(middleware.RBACCheckEndpoint(s.permissionService, "volume"))
 			{
 				// List volumes (supports ?organization_id= filter)
 				volumes.GET("", volumeHandler.ListVolumes)
@@ -196,7 +222,33 @@ func (s *Server) SetupRoutes(
 				// Volume sync
 				volumes.POST("/:id/sync", volumeHandler.SyncVolumeStatus)
 			}
+
+			// Permission and policy management routes (admin only)
+			permissions := protected.Group("/permissions")
+			{
+				permissions.POST("/check", permissionHandler.CheckPermission)
+			}
+
+			policies := protected.Group("/policies")
+			{
+				policies.GET("", permissionHandler.GetAllPolicies)
+				policies.POST("", permissionHandler.AddPolicy)
+				policies.DELETE("", permissionHandler.RemovePolicy)
+			}
+
+			// Settings routes (admin only via RBAC)
+			settings := protected.Group("/settings")
+			settings.Use(middleware.RBACCheckEndpoint(s.permissionService, "settings"))
+			{
+				settings.GET("", settingHandler.GetAllSettings)
+				settings.PUT("", settingHandler.BatchUpdateSettings)
+				settings.GET("/:key", settingHandler.GetSetting)
+				settings.PUT("/:key", settingHandler.UpdateSetting)
+			}
 		}
+
+		// Public settings route (no authentication required)
+		v1.GET("/settings/public", settingHandler.GetPublicSettings)
 	}
 }
 
@@ -211,13 +263,13 @@ func (s *Server) Run(address string) error {
 	s.httpServer = &http.Server{
 		Addr:    address,
 		Handler: s.router,
-		
+
 		// Timeout configurations
-		ReadTimeout:       15 * time.Second, // Time to read request headers and body
-		ReadHeaderTimeout: 10 * time.Second, // Time to read request headers only
-		WriteTimeout:      30 * time.Second, // Time to write response
+		ReadTimeout:       15 * time.Second,  // Time to read request headers and body
+		ReadHeaderTimeout: 10 * time.Second,  // Time to read request headers only
+		WriteTimeout:      30 * time.Second,  // Time to write response
 		IdleTimeout:       120 * time.Second, // Keep-alive timeout
-		
+
 		// Size limits
 		MaxHeaderBytes: 1 << 20, // 1MB max header size
 	}

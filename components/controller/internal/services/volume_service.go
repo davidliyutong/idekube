@@ -115,13 +115,13 @@ func (s *VolumeService) UpdateVolume(ctx context.Context, id int64, req *models.
 
 	// Handle size change (requires PVC resize)
 	needsResize := false
-	oldSize := ""
+	var oldSizeMB int64
 	if req.SizeMB != nil && *req.SizeMB != volume.SizeMB {
 		if *req.SizeMB < volume.SizeMB {
 			return nil, fmt.Errorf("cannot shrink volume size")
 		}
 
-		oldSize = fmt.Sprintf("%dMB", volume.SizeMB)
+		oldSizeMB = int64(volume.SizeMB)
 		volume.SizeMB = *req.SizeMB
 		needsResize = true
 	}
@@ -134,7 +134,7 @@ func (s *VolumeService) UpdateVolume(ctx context.Context, id int64, req *models.
 
 	// Publish resize event if needed
 	if needsResize {
-		if err := s.eventPublisher.PublishVolumeResize(ctx, volume, oldSize); err != nil {
+		if err := s.eventPublisher.PublishVolumeResize(ctx, volume, oldSizeMB, int64(volume.SizeMB)); err != nil {
 			s.logger.Error("Failed to publish volume resize event",
 				zap.Int64("volume_id", volume.ID),
 				zap.Error(err))

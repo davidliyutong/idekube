@@ -12,13 +12,18 @@ import (
 
 // WorkspaceHandler handles workspace-related HTTP requests
 type WorkspaceHandler struct {
-	workspaceService *services.WorkspaceService
+	workspaceService         *services.WorkspaceService
+	workspaceTransferService *services.WorkspaceTransferService
 }
 
 // NewWorkspaceHandler creates a new workspace handler
-func NewWorkspaceHandler(workspaceService *services.WorkspaceService) *WorkspaceHandler {
+func NewWorkspaceHandler(
+	workspaceService *services.WorkspaceService,
+	workspaceTransferService *services.WorkspaceTransferService,
+) *WorkspaceHandler {
 	return &WorkspaceHandler{
-		workspaceService: workspaceService,
+		workspaceService:         workspaceService,
+		workspaceTransferService: workspaceTransferService,
 	}
 }
 
@@ -556,5 +561,275 @@ func (h *WorkspaceHandler) DetachVolume(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Volume detached successfully",
+	})
+}
+
+// InitiateTransfer godoc
+// @Summary 发起工作区转让
+// @Description 工作区所有者发起将工作区转让给其他用户的请求
+// @Tags 工作区
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "工作区ID"
+// @Param request body models.CreateWorkspaceTransferRequest true "转让请求"
+// @Success 201 {object} models.APIResponse{data=models.WorkspaceTransfer} "创建成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "工作区不存在"
+// @Router /workspaces/{id}/transfer [post]
+func (h *WorkspaceHandler) InitiateTransfer(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+
+	idParam := c.Param("id")
+	workspaceID, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid workspace ID",
+			},
+		})
+		return
+	}
+
+	var req models.CreateWorkspaceTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request body",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	transfer, err := h.workspaceTransferService.CreateTransfer(
+		c.Request.Context(),
+		workspaceID,
+		userID,
+		&req,
+	)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "TRANSFER_FAILED",
+				Message: "Failed to create transfer request",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.APIResponse{
+		Success: true,
+		Data:    transfer,
+	})
+}
+
+// RespondToTransfer godoc
+// @Summary 响应工作区转让请求
+// @Description 接收方接受或拒绝工作区转让请求
+// @Tags 工作区
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param transfer_id path int true "转让请求ID"
+// @Param request body models.RespondWorkspaceTransferRequest true "响应请求"
+// @Success 200 {object} models.APIResponse{data=models.WorkspaceTransfer} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "转让请求不存在"
+// @Router /workspace-transfers/{transfer_id}/respond [post]
+func (h *WorkspaceHandler) RespondToTransfer(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+
+	transferIDParam := c.Param("transfer_id")
+	transferID, err := strconv.ParseInt(transferIDParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid transfer ID",
+			},
+		})
+		return
+	}
+
+	var req models.RespondWorkspaceTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request body",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	transfer, err := h.workspaceTransferService.RespondToTransfer(
+		c.Request.Context(),
+		transferID,
+		userID,
+		&req,
+	)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "RESPOND_FAILED",
+				Message: "Failed to respond to transfer request",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    transfer,
+	})
+}
+
+// CancelTransfer godoc
+// @Summary 取消工作区转让请求
+// @Description 发起方取消待处理的工作区转让请求
+// @Tags 工作区
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param transfer_id path int true "转让请求ID"
+// @Success 200 {object} models.APIResponse "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "转让请求不存在"
+// @Router /workspace-transfers/{transfer_id}/cancel [post]
+func (h *WorkspaceHandler) CancelTransfer(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+
+	transferIDParam := c.Param("transfer_id")
+	transferID, err := strconv.ParseInt(transferIDParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid transfer ID",
+			},
+		})
+		return
+	}
+
+	err = h.workspaceTransferService.CancelTransfer(
+		c.Request.Context(),
+		transferID,
+		userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "CANCEL_FAILED",
+				Message: "Failed to cancel transfer request",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Transfer request cancelled successfully",
+	})
+}
+
+// ListPendingTransfers godoc
+// @Summary 列出待处理的工作区转让请求
+// @Description 获取当前用户收到的所有待处理转让请求
+// @Tags 工作区
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} models.APIResponse{data=[]models.WorkspaceTransfer} "成功"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Router /workspace-transfers/pending [get]
+func (h *WorkspaceHandler) ListPendingTransfers(c *gin.Context) {
+	userID := middleware.MustGetUserID(c)
+
+	transfers, err := h.workspaceTransferService.ListPendingTransfersForUser(
+		c.Request.Context(),
+		userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "LIST_FAILED",
+				Message: "Failed to list pending transfers",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    transfers,
+	})
+}
+
+// GetTransfer godoc
+// @Summary 获取转让请求详情
+// @Description 获取特定转让请求的详细信息
+// @Tags 工作区
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param transfer_id path int true "转让请求ID"
+// @Success 200 {object} models.APIResponse{data=models.WorkspaceTransfer} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "转让请求不存在"
+// @Router /workspace-transfers/{transfer_id} [get]
+func (h *WorkspaceHandler) GetTransfer(c *gin.Context) {
+	transferIDParam := c.Param("transfer_id")
+	transferID, err := strconv.ParseInt(transferIDParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid transfer ID",
+			},
+		})
+		return
+	}
+
+	transfer, err := h.workspaceTransferService.GetTransfer(
+		c.Request.Context(),
+		transferID,
+	)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "NOT_FOUND",
+				Message: "Transfer request not found",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    transfer,
 	})
 }

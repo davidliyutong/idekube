@@ -40,54 +40,14 @@ controller:
       value: "5432"
     - name: DATABASE_NAME
       value: "idekube"
-    - name: RABBITMQ_HOST
-      value: '{{ include "idekube.rabbitmq.fullname" . }}'
-    - name: RABBITMQ_PORT
-      value: "5672"
-    - name: LOG_LEVEL
-      value: "info"
-
-  envFrom:
-    - secretRef:
-        name: idekube-secrets
-
-# RBAC microservice - handles permission management
-rbac:
-  enabled: true
-  replicaCount: 1
-
-  image:
-    repository: davidliyutong/idekube-rbac
-    pullPolicy: IfNotPresent
-    tag: "latest"
-
-  service:
-    type: ClusterIP
-    port: 8081
-    targetPort: 8081
-
-  resources:
-    requests:
-      cpu: 50m
-      memory: 256Mi
-
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 80
-
-  env:
-    - name: DATABASE_HOST
-      value: '{{ include "idekube.postgresql.fullname" . }}'
-    - name: DATABASE_PORT
-      value: "5432"
-    - name: DATABASE_NAME
-      value: "idekube"
-    - name: RABBITMQ_HOST
-      value: '{{ include "idekube.rabbitmq.fullname" . }}'
-    - name: RABBITMQ_PORT
-      value: "5672"
+    - name: REDIS_HOST
+      value: '{{ include "idekube.redis.fullname" . }}'
+    - name: REDIS_PORT
+      value: "6379"
+    - name: OPA_POLICY_PATH
+      value: "/app/configs/policy.rego"
+    - name: OPA_DATA_PATH
+      value: "/app/configs/data.json"
     - name: LOG_LEVEL
       value: "info"
 
@@ -131,10 +91,10 @@ housekeeper:
       value: "5432"
     - name: DATABASE_NAME
       value: "idekube"
-    - name: RABBITMQ_HOST
-      value: '{{ include "idekube.rabbitmq.fullname" . }}'
-    - name: RABBITMQ_PORT
-      value: "5672"
+    - name: REDIS_HOST
+      value: '{{ include "idekube.redis.fullname" . }}'
+    - name: REDIS_PORT
+      value: "6379"
     - name: LOG_LEVEL
       value: "info"
 
@@ -211,9 +171,7 @@ postgresql:
   auth:
     username: idekube
     # SECURITY WARNING: Do not use default password in production!
-    # Generate a strong password: openssl rand -base64 32
-    # For production, use existingSecret or set via --set postgresql.auth.password=<secure-password>
-    password: ""
+    # Genera: ""
     database: idekube
     # Name of existing secret containing 'postgres-password' key
     # If set, the 'password' field will be ignored
@@ -238,43 +196,38 @@ postgresql:
     serviceMonitor:
       enabled: false
 
-# RabbitMQ configuration
-rabbitmq:
+# Redis configuration
+redis:
   enabled: true
   auth:
-    username: idekube
     # SECURITY WARNING: Do not use default password in production!
     # Generate a strong password: openssl rand -base64 32
-    # For production, use existingPasswordSecret or set via --set rabbitmq.auth.password=<secure-password>
+    # For production, use existingSecret or set via --set redis.auth.password=<secure-password>
     password: ""
-    # Name of existing secret containing 'rabbitmq-password' key
+    # Name of existing secret containing 'redis-password' key
     # If set, the 'password' field will be ignored
-    existingPasswordSecret: ""
-    # CRITICAL: Erlang cookie must be set for RabbitMQ clustering
-    # Generate a strong random cookie: openssl rand -base64 32
-    # NEVER commit the production cookie to version control!
-    # Set via: --set rabbitmq.auth.erlangCookie=<secure-random-string>
-    erlangCookie: ""
-  persistence:
-    enabled: true
-    size: 8Gi
-    # Storage class for RabbitMQ PVC
-    # If not set, will use global.storageClass
-    # If global.storageClass is also empty, will use cluster default
-    storageClass: ""
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-    requests:
-      cpu: 1000m
-      memory: 512Mi
+    existingSecret: ""
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+      # Storage class for Redis PVC
+      # If not set, will use global.storageClass
+      # If global.storageClass is also empty, will use cluster default
+      storageClass: ""
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  replica:
+    replicaCount: 0
   metrics:
     enabled: true
     serviceMonitor:
       enabled: false
-  clustering:
-    enabled: false
 
 # ServiceAccount configuration
 serviceAccount:
@@ -327,6 +280,5 @@ secrets:
   # Or create an external secret and reference it in the deployments
   DATABASE_USER: "idekube"
   DATABASE_PASSWORD: ""  # MUST BE SET - see security notes above
-  RABBITMQ_USER: "idekube"
-  RABBITMQ_PASSWORD: ""  # MUST BE SET - see security notes above
+  REDIS_PASSWORD: ""  # MUST BE SET - see security notes above
   JWT_SECRET: ""  # MUST BE SET - see security notes above

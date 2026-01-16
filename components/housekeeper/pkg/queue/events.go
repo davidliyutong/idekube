@@ -3,7 +3,7 @@ package queue
 import (
 	"time"
 
-	"github.com/davidliyutong/idekube-controller/internal/models"
+	"github.com/davidliyutong/idekube-housekeeper/internal/models"
 )
 
 // Event types for workspace operations
@@ -32,7 +32,7 @@ const (
 	StreamHousekeeperWorkspace = "idekube:stream:housekeeper:workspace"
 	StreamHousekeeperVolume    = "idekube:stream:housekeeper:volume"
 	StreamHousekeeperCleanup   = "idekube:stream:housekeeper:cleanup"
-
+	
 	// Streams for controller to consume
 	StreamControllerStatus = "idekube:stream:controller:status"
 
@@ -136,6 +136,7 @@ type OrganizationDeleteEvent struct {
 	Name           string    `json:"name,omitempty"`
 	Timestamp      time.Time `json:"timestamp"`
 }
+
 
 // NewWorkspaceEvent creates a new workspace event
 func NewWorkspaceEvent(eventType string, workspace *models.Workspace, template *models.Template, volumes []*models.Volume) *WorkspaceEvent {
