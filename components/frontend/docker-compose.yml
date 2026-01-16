@@ -1,0 +1,21 @@
+# Docker Compose for local development
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - VITE_WS_URL=ws://localhost:3000
+    networks:
+      - idekube
+
+networks:
+  idekube:
+    external: true

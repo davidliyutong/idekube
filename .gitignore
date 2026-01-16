@@ -1,6 +1,6 @@
 # IDE
 .idea
-.vscode
+.vs*
 
 # tmp
 tmp
@@ -15,5 +15,8 @@ tmp
 
 # ignore ansible inventory
 manifests/ansible/inventory/*.ini
+
+# reference files
+references/
 
 # ignore helmvalues.yaml
