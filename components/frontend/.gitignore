@@ -40,3 +40,6 @@ dist-ssr
 
 # Vite
 .vite
+
+# Generated API client
+src/api/client/*

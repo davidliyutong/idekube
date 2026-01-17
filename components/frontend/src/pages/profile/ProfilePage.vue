@@ -1,0 +1,1 @@
+<template><div class="profile-page"><h1 class="page-title">Profile</h1><va-card><va-card-content><p>User profile will be implemented here</p></va-card-content></va-card></div></template><script setup lang="ts"></script><style lang="scss" scoped>.page-title{margin:0 0 1.5rem 0;font-size:2rem;font-weight:600}</style>

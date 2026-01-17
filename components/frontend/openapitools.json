@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenAPITools/openapi-generator/master/modules/openapi-generator/src/main/resources/org/openapitools/codegen/config-schema.json",
+  "spaces": 2,
+  "generator-cli": {
+    "version": "7.18.0"
+  },
+  "generatorName": "typescript-axios",
+  "inputSpec": "../../controller/docs/api/swagger.json",
+  "outputDir": "src/api/client",
+  "additionalProperties": {
+    "supportsES6": true,
+    "withSeparateModelsAndApi": true,
+    "apiPackage": "api",
+    "modelPackage": "models",
+    "npmName": "idekube-api-client",
+    "npmVersion": "1.0.0",
+    "useSingleRequestParameter": false
+  }
+}

@@ -1,0 +1,204 @@
+# GitLab CI Configuration for Building All Docker Images
+#
+# This CI pipeline builds all Docker images for IdeKube components
+# and optionally pushes them to the container registry.
+#
+# Triggered on:
+# - Push to main branch
+# - Push to release branches
+# - Manual trigger
+
+stages:
+  - build
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_PROGRESS: plain
+  DOCKER_REGISTRY: ${CI_REGISTRY}
+  # Override for Docker Hub or other registries
+  # DOCKER_REGISTRY: docker.io
+
+build-all-images:
+  stage: build
+  image:
+    name: docker:dind
+    entrypoint: [""]
+  services:
+    - docker:dind
+
+  only:
+    - main
+    - /^release\/.*$/
+
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_TLS_VERIFY: 1
+    # Multi-platform build settings
+    DOCKER_BUILDKIT: 1
+    BUILDKIT_PROGRESS: plain
+    PLATFORMS: "linux/amd64,linux/arm64"
+
+  before_script:
+    # Install required tools
+    - apk add --no-cache git go nodejs yarn bash make curl wget ca-certificates
+    - apk add --no-cache openjdk11 # For API generation
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
+    - export PATH="$JAVA_HOME/bin:$PATH"
+
+    # Install buildx
+    - mkdir -p ~/.docker/cli-plugins
+    - wget -O ~/.docker/cli-plugins/docker-buildx https://github.com/docker/buildx/releases/download/v0.12.0/buildx-v0.12.0.linux-amd64
+    - chmod +x ~/.docker/cli-plugins/docker-buildx
+
+    # Install OpenAPI Generator CLI
+    - npm install -g @openapitools/openapi-generator-cli
+
+    # Install Go tools
+    - go install github.com/swaggo/swag/cmd/swag@latest
+    - export PATH="$PATH:/root/go/bin"
+
+    # Wait for Docker to be ready
+    - until docker info; do echo "Waiting for Docker daemon..."; sleep 2; done
+
+    # Setup buildx builder
+    - docker buildx create --name ci-builder --platform linux/amd64,linux/arm64 2>/dev/null || true
+    - docker buildx use ci-builder || true
+    - docker buildx ls
+
+    # Login to registry (for pushing images)
+    - |
+      if [ -n "$CI_JOB_TOKEN" ]; then
+        echo "$CI_JOB_TOKEN" | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+      fi
+
+    # Setup Git for version detection
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - git fetch --tags 2>/dev/null || true
+
+  script:
+    # Make build script executable
+    - chmod +x ./scripts/build-all-docker-images.sh
+
+    # Determine version
+    - |
+      VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "$CI_COMMIT_SHORT_SHA")
+      echo "VERSION=$VERSION" | tee build.env
+
+    # Run build script
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        # Push multi-platform images on main branch
+        ./scripts/build-all-docker-images.sh \
+          --registry "$DOCKER_REGISTRY" \
+          --version "$VERSION" \
+          --platforms "$PLATFORMS" \
+          --push
+      else
+        # Only build single platform on other branches
+        ./scripts/build-all-docker-images.sh \
+          --registry "$DOCKER_REGISTRY" \
+          --version "$VERSION" \
+          --platforms "linux/amd64"
+      fi
+
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+  # Optional: Store images for deployment jobs
+  cache:
+    key: docker-images-$CI_COMMIT_SHA
+    paths:
+      - .docker-images/
+    policy: pull-push
+
+  retry:
+    max: 2
+    when:
+      - docker_daemon_unavailable
+      - stuck_or_timeout_failure
+
+  after_script:
+    # Logout from registry for security
+    - docker logout $CI_REGISTRY || true
+
+# Optional: Separate job for pushing to external registries
+push-to-docker-hub:
+  stage: build
+  image:
+    name: docker:dind
+    entrypoint: [""]
+  services:
+    - docker:dind
+
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_BUILDKIT: 1
+    BUILDKIT_PROGRESS: plain
+    PLATFORMS: "linux/amd64,linux/arm64"
+
+  only:
+    - main
+    - /^release\/.*$/
+
+  when: manual # Manual trigger for security
+
+  before_script:
+    # Install required tools
+    - apk add --no-cache git go nodejs yarn bash make curl wget ca-certificates
+    - apk add --no-cache openjdk11
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
+    - export PATH="$JAVA_HOME/bin:$PATH"
+
+    # Install buildx
+    - mkdir -p ~/.docker/cli-plugins
+    - wget -O ~/.docker/cli-plugins/docker-buildx https://github.com/docker/buildx/releases/download/v0.12.0/buildx-v0.12.0.linux-amd64
+    - chmod +x ~/.docker/cli-plugins/docker-buildx
+
+    # Install OpenAPI Generator CLI
+    - npm install -g @openapitools/openapi-generator-cli
+
+    # Install Go tools
+    - go install github.com/swaggo/swag/cmd/swag@latest
+    - export PATH="$PATH:/root/go/bin"
+
+    # Wait for Docker to be ready
+    - until docker info; do echo "Waiting for Docker daemon..."; sleep 2; done
+
+    # Setup buildx builder for multi-platform
+    - docker buildx create --name docker-hub-builder --platform linux/amd64,linux/arm64 2>/dev/null || true
+    - docker buildx use docker-hub-builder || true
+
+    # Login to Docker Hub
+    - |
+      if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN" ]; then
+        echo "Error: DOCKER_HUB_USERNAME and DOCKER_HUB_TOKEN must be set"
+        exit 1
+      fi
+      echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+
+    # Setup Git
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - git fetch --tags 2>/dev/null || true
+
+  script:
+    - chmod +x ./scripts/build-all-docker-images.sh
+    - VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "$CI_COMMIT_SHORT_SHA")
+
+    # Build and push to Docker Hub with multi-platform support
+    - |
+      ./scripts/build-all-docker-images.sh \
+        --registry "docker.io" \
+        --version "$VERSION" \
+        --platforms "$PLATFORMS" \
+        --push
+
+  after_script:
+    - docker logout || true

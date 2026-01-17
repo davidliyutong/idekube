@@ -106,7 +106,7 @@ JWT_EXPIRATION_HOURS=720                # Token expiration time (hours)
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=idekube
-POSTGRES_PASSWORD=idekube123
+POSTGRES_PASSWORD=idekube
 POSTGRES_DB=idekube
 ```
 

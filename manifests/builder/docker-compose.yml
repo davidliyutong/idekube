@@ -1,0 +1,56 @@
+# IdeKube Builder Development Environment
+#
+# This docker-compose file provides a development environment
+# for testing the builder image locally.
+#
+# Usage:
+#   docker-compose -f manifests/build/docker-compose.yml up -d
+#   docker-compose -f manifests/build/docker-compose.yml exec builder bash
+#   docker-compose -f manifests/build/docker-compose.yml down
+
+version: "3.8"
+
+services:
+  builder:
+    build:
+      context: ../..
+      dockerfile: manifests/build/Dockerfile
+      cache_from:
+        - idekube-builder:latest
+    image: idekube-builder:dev
+    container_name: idekube-builder-dev
+
+    # Use host Docker socket for building
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./../../:/workspace
+      - builder-cache:/root/.cache
+      - builder-go:/root/go
+
+    working_dir: /workspace
+
+    # Keep container running
+    command: sh -c "dockerd & sleep infinity"
+
+    environment:
+      DOCKER_BUILDKIT: "1"
+      BUILDKIT_PROGRESS: "plain"
+
+    privileged: true
+
+    # Expose Docker port for remote client (optional)
+    ports:
+      - "2375:2375"
+      - "2376:2376"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "docker", "ps"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  builder-cache:
+  builder-go:

@@ -1,14 +1,16 @@
-.PHONY: install dev build preview lint type-check clean docker-build docker-run docker-dev help
+.PHONY: install dev build preview lint type-check clean generate-api docker-build docker-run docker-dev help
 
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
 IMAGE_NAME = davidliyutong/idekube-frontend
 CONTAINER_NAME = idekube-frontend
+SWAGGER_JSON = ../controller/docs/api/swagger.json
 
 # Default target
 help:
 	@echo "IdeKube Frontend - Available targets:"
 	@echo "  install      - Install dependencies with yarn"
+	@echo "  generate-api - Generate TypeScript API client from swagger.json"
 	@echo "  dev          - Run development server"
 	@echo "  build        - Build for production"
 	@echo "  preview      - Preview production build"
@@ -43,9 +45,13 @@ lint:
 type-check:
 	yarn type-check
 
+# Generate API client from swagger.json
+generate-api:
+	@./scripts/generate-api.sh
+
 # Clean build artifacts
 clean:
-	rm -rf dist node_modules .vite
+	rm -rf dist node_modules .vite src/api/client
 
 # Build Docker image for production
 docker-build:

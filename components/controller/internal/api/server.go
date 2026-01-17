@@ -124,9 +124,9 @@ func (s *Server) SetupRoutes(
 				users.DELETE("/:id", userHandler.DeleteUser)
 
 				// Role management (admin only)
-				users.POST("/:user_id/roles", permissionHandler.AssignRole)
-				users.DELETE("/:user_id/roles", permissionHandler.RemoveRole)
-				users.GET("/:user_id/roles", permissionHandler.GetUserRoles)
+				users.POST("/:id/roles", permissionHandler.AssignRole)
+				users.DELETE("/:id/roles", permissionHandler.RemoveRole)
+				users.GET("/:id/roles", permissionHandler.GetUserRoles)
 			}
 
 			// Organization routes

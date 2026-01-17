@@ -100,10 +100,10 @@ type AssignRoleRequest struct {
 // @Success 200 {object} models.APIResponse
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
-// @Router /users/{user_id}/roles [post]
+// @Router /users/{id}/roles [post]
 // @Security BearerAuth
 func (h *PermissionHandler) AssignRole(c *gin.Context) {
-	userIDStr := c.Param("user_id")
+	userIDStr := c.Param("id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
@@ -156,10 +156,10 @@ func (h *PermissionHandler) AssignRole(c *gin.Context) {
 // @Success 200 {object} models.APIResponse
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
-// @Router /users/{user_id}/roles [delete]
+// @Router /users/{id}/roles [delete]
 // @Security BearerAuth
 func (h *PermissionHandler) RemoveRole(c *gin.Context) {
-	userIDStr := c.Param("user_id")
+	userIDStr := c.Param("id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
@@ -215,10 +215,10 @@ type GetUserRolesResponse struct {
 // @Success 200 {object} models.APIResponse{data=GetUserRolesResponse}
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
-// @Router /users/{user_id}/roles [get]
+// @Router /users/{id}/roles [get]
 // @Security BearerAuth
 func (h *PermissionHandler) GetUserRoles(c *gin.Context) {
-	userIDStr := c.Param("user_id")
+	userIDStr := c.Param("id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
@@ -341,8 +341,9 @@ func (h *PermissionHandler) RemovePolicy(c *gin.Context) {
 }
 
 // GetAllPoliciesResponse represents the response for getting all policies
+// Example: {"policies": [["role:admin", "workspace", "read"], ["role:user", "workspace", "list"]]}
 type GetAllPoliciesResponse struct {
-	Policies [][]string `json:"policies" example:"[[\"role:admin\",\"workspace\",\"read\"]]"`
+	Policies [][]string `json:"policies"`
 }
 
 // GetAllPolicies godoc

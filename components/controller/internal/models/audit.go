@@ -2,6 +2,8 @@ package models
 
 import (
 	"time"
+
+	"gorm.io/datatypes"
 )
 
 // AuditLog represents an audit log entry
@@ -12,7 +14,7 @@ type AuditLog struct {
 	Action       string                 `json:"action" db:"action"`
 	ResourceType *string                `json:"resource_type,omitempty" db:"resource_type"`
 	ResourceID   *string                `json:"resource_id,omitempty" db:"resource_id"`
-	Details      map[string]interface{} `json:"details,omitempty" db:"details"`
+	Details      datatypes.JSONMap      `json:"details,omitempty" db:"details"`
 	IPAddress    *string                `json:"ip_address,omitempty" db:"ip_address"`
 	UserAgent    *string                `json:"user_agent,omitempty" db:"user_agent"`
 	CreatedAt    time.Time              `json:"created_at" db:"created_at"`
@@ -25,7 +27,7 @@ type CreateAuditLogRequest struct {
 	Action       string                 `json:"action" binding:"required"`
 	ResourceType *string                `json:"resource_type,omitempty"`
 	ResourceID   *string                `json:"resource_id,omitempty"`
-	Details      map[string]interface{} `json:"details,omitempty"`
+	Details      datatypes.JSONMap `json:"details,omitempty"`
 	IPAddress    *string                `json:"ip_address,omitempty"`
 	UserAgent    *string                `json:"user_agent,omitempty"`
 }

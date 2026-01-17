@@ -1,0 +1,135 @@
+# GitHub Actions Workflow for Building All Docker Images
+#
+# This workflow builds all Docker images for IdeKube components
+# and optionally pushes them to Docker Hub.
+#
+# Triggered on:
+# - Push to main branch
+# - Push to release branches (release/*)
+# - Manual trigger (workflow_dispatch)
+
+name: Build All Docker Images
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: "Push images to registry"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      registry:
+        description: "Docker registry"
+        required: false
+        default: "docker.io"
+        type: string
+
+env:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_BUILDKIT: 1
+  BUILDKIT_PROGRESS: plain
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU for multi-arch builds
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+          buildkitd-flags: --allow-insecure-entitlement security.insecure
+
+      - name: Login to Docker Hub
+        if: github.event_name == 'push' || github.event.inputs.push_images == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "yarn"
+          cache-dependency-path: "components/frontend/yarn.lock"
+
+      - name: Set up Java for API generation
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "11"
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "latest")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+
+      - name: Determine build options
+        id: build_opts
+        run: |
+          if [[ "${{ github.event_name }}" == "push" || "${{ github.event.inputs.push_images }}" == "true" ]]; then
+            echo "push_flag=--push" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+            echo "Will push multi-arch images to registry"
+          else
+            echo "push_flag=" >> $GITHUB_OUTPUT
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+            echo "Will build linux/amd64 image locally"
+          fi
+
+      - name: Run build script
+        run: |
+          chmod +x scripts/build-all-docker-images.sh
+          scripts/build-all-docker-images.sh \
+            --registry ${{ env.DOCKER_REGISTRY }} \
+            --version ${{ steps.version.outputs.version }} \
+            --platforms ${{ steps.build_opts.outputs.platforms }} \
+            ${{ steps.build_opts.outputs.push_flag }}
+
+      - name: List built images
+        if: steps.build_opts.outputs.push_flag == ''
+        run: docker images | grep davidliyutong/idekube
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "## Docker Images Build Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** ${{ env.DOCKER_REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:** ${{ steps.build_opts.outputs.platforms }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Push:** ${{ steps.build_opts.outputs.push_flag != '' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built Images:" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.build_opts.outputs.push_flag }}" == "" ]]; then
+            docker images | grep davidliyutong/idekube >> $GITHUB_STEP_SUMMARY || echo "No local images (multi-arch build)"
+          else
+            echo "Multi-arch images pushed to registry" >> $GITHUB_STEP_SUMMARY
+          fi

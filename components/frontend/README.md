@@ -1,21 +1,52 @@
-# IdeKube Frontend
+# IDEKube Frontend
 
-A modern Vue 3 + Vuestic UI frontend for the IdeKube Kubernetes IDE management platform.
+A modern Vue 3 + Vuestic UI frontend for the IDEKube Kubernetes IDE management platform.
 
 ## Features
 
 - 🎨 Built with Vuestic UI framework
 - ⚡️ Vite for fast development and building
-- 🔒 TypeScript support
+- 🔒 TypeScript support with strict mode
 - 📱 Responsive design
-- 🔌 Axios for API communication
+- 🔌 Axios for API communication with auto-retry
 - 📦 Pinia for state management
-- 🛣️ Vue Router for navigation
+- 🛣️ Vue Router 4 with navigation guards
+- 🔐 JWT authentication with auto-refresh
+- 🔄 OpenAPI code generation from swagger.json
+- 🐳 Docker support with nginx
 
 ## Prerequisites
 
 - Node.js >= 18.x
-- Yarn package manager
+- Yarn >= 1.22.0
+- Docker (optional, for containerized deployment)
+
+## Project Structure
+
+```
+src/
+├── api/              # API client and generated code
+├── assets/           # Static assets
+├── components/       # Reusable components
+├── layouts/          # Layout components (Auth, App)
+├── pages/            # Page components
+│   ├── auth/         # Login, Register, Forgot Password
+│   ├── dashboard/    # Dashboard
+│   ├── workspaces/   # Workspace management
+│   ├── templates/    # Template management
+│   ├── users/        # User management (admin)
+│   ├── organizations/# Organization management
+│   ├── volumes/      # Volume management
+│   ├── settings/     # Settings (admin)
+│   ├── webhooks/     # Webhooks (admin)
+│   ├── api-keys/     # API key management
+│   └── profile/      # User profile
+├── router/           # Vue Router configuration
+├── stores/           # Pinia stores
+├── styles/           # Global styles
+├── types/            # TypeScript types
+└── utils/            # Utility functions
+```
 
 ## Development
 
@@ -27,6 +58,24 @@ make install
 yarn install
 ```
 
+### Generate API Client
+
+Before running the development server, generate the API client from the controller's swagger.json:
+
+```bash
+make generate-api
+# or
+./scripts/generate-api.sh
+```
+
+This will create TypeScript client code in `src/api/client/` based on the OpenAPI specification from `../controller/docs/api/swagger.json`.
+
+**Requirements:**
+- Java 8+ installed (required by OpenAPI Generator)
+- Controller's swagger.json must exist at `../controller/docs/api/swagger.json`
+
+**Note for macOS users:** If you encounter Java path issues with jenv, the script will automatically use the system Java installation via `/usr/libexec/java_home`.
+
 ### Run development server
 
 ```bash
@@ -37,6 +86,21 @@ yarn dev
 
 The application will be available at `http://localhost:5173`
 
+The dev server includes:
+- Hot Module Replacement (HMR)
+- API proxy to backend (configurable via VITE_API_BASE_URL)
+- WebSocket proxy for real-time features
+
+### Environment Variables
+
+Copy `.env.example` to `.env.development` and configure:
+
+```env
+VITE_API_BASE_URL=http://localhost:3000
+VITE_APP_TITLE=IDEKube
+VITE_ENABLE_MOCK=false
+```
+
 ### Type checking
 
 ```bash
@@ -45,12 +109,14 @@ make type-check
 yarn type-check
 ```
 
-### Linting
+### Linting & Formatting
 
 ```bash
-make lint
+make lint      # Run ESLint
+make format    # Run Prettier
 # or
 yarn lint
+yarn format
 ```
 
 ## Building
@@ -62,6 +128,8 @@ make build
 # or
 yarn build
 ```
+
+The build output will be in the `dist/` directory.
 
 ### Preview production build
 
@@ -79,7 +147,11 @@ yarn preview
 make docker-build
 ```
 
-This builds a production-optimized Docker image with nginx.
+This builds a production-optimized Docker image with:
+- Multi-stage build (Node.js builder + nginx runtime)
+- Optimized bundle size with tree-shaking
+- Gzip compression
+- Environment variable substitution for backend URL
 
 ### Run in Docker (production)
 
@@ -89,7 +161,7 @@ make docker-run
 
 The application will be available at `http://localhost:8080`
 
-#### Configure Backend URL
+### Configure Backend URL
 
 The container accepts environment variables to configure the backend API endpoint:
 
@@ -98,6 +170,7 @@ docker run -d \
   -p 8080:80 \
   -e BACKEND_HOST=api.example.com \
   -e BACKEND_PORT=3000 \
+  -e RESOLVER=8.8.8.8 \
   --name idekube-frontend \
   davidliyutong/idekube-frontend:latest
 ```
@@ -203,7 +276,36 @@ VITE_WS_URL=ws://localhost:3000
 
 ## API Integration
 
-The frontend is configured to proxy API requests through Vite dev server or nginx in production:
+The frontend uses a type-safe API client auto-generated from the controller's OpenAPI specification.
+
+### Generate API Client
+
+```bash
+make generate-api
+```
+
+This creates TypeScript client code in `src/api/client/` with:
+- Type-safe API endpoint methods
+- Request/response type definitions
+- Automatic JWT token handling
+- Built-in error handling
+
+### Using the API Client
+
+```typescript
+import { DefaultApi, apiClient } from '@/api';
+import type { ModelsWorkspace } from '@/api';
+
+const api = new DefaultApi(undefined, '', apiClient);
+const response = await api.workspacesGet();
+const workspaces: ModelsWorkspace[] = response.data.workspaces || [];
+```
+
+**See [docs/API_CLIENT.md](docs/API_CLIENT.md) for comprehensive usage guide.**
+
+### API Proxy Configuration
+
+The frontend proxies API requests through Vite dev server or nginx in production:
 
 - `/api` - REST API endpoints
 - `/ws` - WebSocket connections

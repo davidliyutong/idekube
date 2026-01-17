@@ -131,9 +131,7 @@ CREATE TABLE volumes (
 
 CREATE INDEX idx_volumes_owner ON volumes(owner_type, owner_id);
 CREATE INDEX idx_volumes_status ON volumes(status);
-CREATE INDEX idx_volumes_deleted_at ON volumes(deleted_at
-CREATE INDEX idx_volumes_owner ON volumes(owner_type, owner_id);
-CREATE INDEX idx_volumes_status ON volumes(status);
+CREATE INDEX idx_volumes_deleted_at ON volumes(deleted_at);
 
 -- Workspaces table
 CREATE TABLE workspaces (
@@ -168,8 +166,6 @@ CREATE INDEX idx_workspaces_status ON workspaces(current_status);
 CREATE INDEX idx_workspaces_template_id ON workspaces(template_id);
 CREATE INDEX idx_workspaces_created_by ON workspaces(created_by);
 CREATE INDEX idx_workspaces_deleted_at ON workspaces(deleted_at);
-CREATE INDEX idx_workspaces_template_id ON workspaces(template_id);
-CREATE INDEX idx_workspaces_created_by ON workspaces(created_by);
 
 -- Workspace volumes table
 CREATE TABLE workspace_volumes (

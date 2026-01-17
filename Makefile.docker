@@ -1,0 +1,181 @@
+.PHONY: help docker-build docker-build-push docker-build-dev docker-clean docker-list docker-remove docker-build-controller docker-build-frontend docker-build-housekeeper docker-build-multiarch docker-build-multiarch-push docker-builder-build docker-builder-dev docker-builder-shell docker-builder-stop docker-builder-logs docker-build-in-builder docker-build-in-builder-push
+
+# Docker build targets
+# Usage: make docker-build [DOCKER_REGISTRY=...] [VERSION=...]
+
+# Colors
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+NC := \033[0m # No Color
+
+# Variables
+DOCKER_REGISTRY ?= docker.io
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
+PLATFORMS ?= linux/amd64,linux/arm64
+SCRIPT_DIR := ./scripts
+BUILD_SCRIPT := $(SCRIPT_DIR)/build-all-docker-images.sh
+BUILDER_IMAGE := idekube-builder:latest
+BUILDER_DOCKERFILE := ./manifests/build/Dockerfile
+
+help:
+	@echo "$(BLUE)IdeKube Docker Build Targets$(NC)"
+	@echo ""
+	@echo "$(GREEN)Build Targets:$(NC)"
+	@echo "  make docker-build                - Build all Docker images (no push)"
+	@echo "  make docker-build-push           - Build and push all Docker images"
+	@echo "  make docker-build-multiarch      - Build multi-platform images (no push)"
+	@echo "  make docker-build-multiarch-push - Build and push multi-platform images"
+	@echo "  make docker-build-dev            - Build with development settings"
+	@echo ""
+	@echo "$(GREEN)Builder Image Targets:$(NC)"
+	@echo "  make docker-builder-build        - Build CI/CD builder image"
+	@echo "  make docker-builder-dev          - Build and run dev environment"
+	@echo "  make docker-builder-shell        - Open shell in builder container"
+	@echo ""
+	@echo "$(GREEN)Options:$(NC)"
+	@echo "  DOCKER_REGISTRY=<url>   - Override Docker registry (default: docker.io)"
+	@echo "  VERSION=<tag>           - Override version tag (default: git describe or latest)"
+	@echo "  PLATFORMS=<list>        - Comma-separated platforms (default: linux/amd64,linux/arm64)"
+	@echo ""
+	@echo "$(GREEN)Examples:$(NC)"
+	@echo "  make docker-build"
+	@echo "  make docker-build-push VERSION=v1.0.0"
+	@echo "  make docker-build-multiarch DOCKER_REGISTRY=myregistry.com"
+	@echo "  make docker-builder-build"
+	@echo "  make docker-builder-dev"
+	@echo ""
+	@echo "$(GREEN)Individual Component Builds:$(NC)"
+	@echo "  make docker-build-controller"
+	@echo "  make docker-build-frontend"
+	@echo "  make docker-build-housekeeper"
+
+# Build all images without pushing
+docker-build:
+	@echo "$(BLUE)Building Docker images...$(NC)"
+	@echo "Registry: $(DOCKER_REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Platforms: linux/amd64"
+	@$(BUILD_SCRIPT) \
+		--registry $(DOCKER_REGISTRY) \
+		--version $(VERSION) \
+		--platforms linux/amd64
+
+# Build and push all images
+docker-build-push:
+	@echo "$(BLUE)Building and pushing Docker images...$(NC)"
+	@echo "Registry: $(DOCKER_REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Platforms: linux/amd64"
+	@$(BUILD_SCRIPT) \
+		--registry $(DOCKER_REGISTRY) \
+		--version $(VERSION) \
+		--platforms linux/amd64 \
+		--push
+
+# Build multi-platform images without pushing
+docker-build-multiarch:
+	@echo "$(BLUE)Building multi-platform Docker images...$(NC)"
+	@echo "Registry: $(DOCKER_REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Platforms: $(PLATFORMS)"
+	@$(BUILD_SCRIPT) \
+		--registry $(DOCKER_REGISTRY) \
+		--version $(VERSION) \
+		--platforms $(PLATFORMS)
+
+# Build and push multi-platform images
+docker-build-multiarch-push:
+	@echo "$(BLUE)Building and pushing multi-platform Docker images...$(NC)"
+	@echo "Registry: $(DOCKER_REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Platforms: $(PLATFORMS)"
+	@$(BUILD_SCRIPT) \
+		--registry $(DOCKER_REGISTRY) \
+		--version $(VERSION) \
+		--platforms $(PLATFORMS) \
+		--push
+
+# Development build (no push, verbose)
+docker-build-dev:
+	@echo "$(BLUE)Development Docker build...$(NC)"
+	@$(BUILD_SCRIPT) \
+		--registry localhost:5000 \
+		--version dev \
+		--platforms linux/amd64
+
+# Individual component builds
+docker-build-controller:
+	@cd components/controller && make docker-build
+
+docker-build-frontend:
+	@cd components/frontend && make docker-build
+
+docker-build-housekeeper:
+	@cd components/housekeeper && make docker-build
+
+# Builder image targets
+docker-builder-build:
+	@echo "$(BLUE)Building CI/CD builder image...$(NC)"
+	@docker build -f $(BUILDER_DOCKERFILE) -t $(BUILDER_IMAGE) .
+	@echo "$(GREEN)✓ Builder image built: $(BUILDER_IMAGE)$(NC)"
+
+docker-builder-dev:
+	@echo "$(BLUE)Starting builder development environment...$(NC)"
+	@docker-compose -f manifests/build/docker-compose.yml up -d
+	@echo "$(GREEN)✓ Builder environment started$(NC)"
+	@echo ""
+	@echo "Commands:"
+	@echo "  docker-compose -f manifests/build/docker-compose.yml exec builder bash"
+	@echo "  make docker-builder-shell"
+
+docker-builder-shell:
+	@docker-compose -f manifests/build/docker-compose.yml exec builder bash
+
+docker-builder-stop:
+	@echo "$(BLUE)Stopping builder environment...$(NC)"
+	@docker-compose -f manifests/build/docker-compose.yml down
+	@echo "$(GREEN)✓ Builder environment stopped$(NC)"
+
+docker-builder-logs:
+	@docker-compose -f manifests/build/docker-compose.yml logs -f
+
+# Clean Docker artifacts
+docker-clean:
+	@echo "$(BLUE)Cleaning Docker artifacts...$(NC)"
+	@docker image prune -f --filter "label!=keep"
+	@echo "$(GREEN)✓ Docker artifacts cleaned$(NC)"
+
+# List all built images
+docker-list:
+	@docker images | grep davidliyutong/idekube
+
+# Remove all IdeKube images
+docker-remove:
+	@echo "$(BLUE)Removing all IdeKube Docker images...$(NC)"
+	@docker rmi -f $$(docker images | grep davidliyutong/idekube | awk '{print $$3}') 2>/dev/null || echo "No images found"
+	@echo "$(GREEN)✓ Docker images removed$(NC)"
+
+# Build in builder container
+docker-build-in-builder:
+	@echo "$(BLUE)Building images in builder container...$(NC)"
+	@docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(PWD):/workspace \
+		$(BUILDER_IMAGE) \
+		./scripts/build-all-docker-images.sh \
+			--registry $(DOCKER_REGISTRY) \
+			--version $(VERSION) \
+			--platforms $(PLATFORMS)
+
+docker-build-in-builder-push:
+	@echo "$(BLUE)Building and pushing images in builder container...$(NC)"
+	@docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(PWD):/workspace \
+		$(BUILDER_IMAGE) \
+		./scripts/build-all-docker-images.sh \
+			--registry $(DOCKER_REGISTRY) \
+			--version $(VERSION) \
+			--platforms $(PLATFORMS) \
+			--push

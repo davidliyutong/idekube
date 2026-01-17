@@ -21,12 +21,11 @@ build-migrate:
 
 # Run the application
 run:
-	go run ./cmd/controller
+	set -a; source .env; set +a; go run ./cmd/controller
 
 # Run with hot reload (requires air)
 dev:
-	@echo "Starting development mode with hot reload..."
-	@air
+	set -a; source .env; set +a; air
 
 # Run tests
 test:
