@@ -10,6 +10,7 @@ import (
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
 	"github.com/davidliyutong/idekube-controller/pkg/utils"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -118,6 +119,7 @@ func (s *UserService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 	}
 
 	user := &models.User{
+		UUID:         uuid.New(),
 		Username:     req.Username,
 		Email:        req.Email,
 		PasswordHash: hashedPassword,

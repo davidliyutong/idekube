@@ -26,7 +26,7 @@ func NewAPIKeyHandler(apiKeyService *services.APIKeyService) *APIKeyHandler {
 // CreateAPIKey godoc
 // @Summary 创建API密钥
 // @Description 为当前用户创建新的API密钥
-// @Tags API密钥
+// @Tags API Keys
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -98,7 +98,7 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 // GetAPIKey godoc
 // @Summary 获取API密钥详情
 // @Description 根据ID获取API密钥的详细信息
-// @Tags API密钥
+// @Tags API Keys
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -145,7 +145,7 @@ func (h *APIKeyHandler) GetAPIKey(c *gin.Context) {
 // ListAPIKeys godoc
 // @Summary 列出API密钥
 // @Description 获取当前用户的所有API密钥
-// @Tags API密钥
+// @Tags API Keys
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -181,7 +181,7 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 // RevokeAPIKey godoc
 // @Summary 撤销API密钥
 // @Description 撤销指定的API密钥
-// @Tags API密钥
+// @Tags API Keys
 // @Accept json
 // @Produce json
 // @Security BearerAuth

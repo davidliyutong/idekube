@@ -21,6 +21,7 @@ type EmailService struct {
 	smtpPort    int
 	smtpUser    string
 	smtpPass    string
+	useTLS      bool
 	fromEmail   string
 	fromName    string
 	baseURL     string
@@ -34,6 +35,7 @@ func NewEmailService(
 	smtpPort int,
 	smtpUser string,
 	smtpPass string,
+	useTLS bool,
 	fromEmail string,
 	fromName string,
 	baseURL string,
@@ -45,6 +47,7 @@ func NewEmailService(
 		smtpPort:    smtpPort,
 		smtpUser:    smtpUser,
 		smtpPass:    smtpPass,
+		useTLS:      useTLS,
 		fromEmail:   fromEmail,
 		fromName:    fromName,
 		baseURL:     baseURL,
@@ -229,6 +232,15 @@ func (s *EmailService) sendEmail(to, subject, body string) error {
 	m.SetBody("text/html", body)
 
 	d := gomail.NewDialer(s.smtpHost, s.smtpPort, s.smtpUser, s.smtpPass)
+	
+	// Configure TLS based on settings
+	// If useTLS is false, it will still use STARTTLS if the server supports it
+	// Setting SSL to true forces TLS from the start (implicit TLS, typically port 465)
+	if s.useTLS {
+		// For STARTTLS (port 587), use default settings
+		// For implicit TLS (port 465), gomail will handle it automatically
+		d.SSL = s.smtpPort == 465
+	}
 
 	if err := d.DialAndSend(m); err != nil {
 		return fmt.Errorf("failed to send email: %w", err)

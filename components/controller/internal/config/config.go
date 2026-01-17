@@ -7,16 +7,19 @@ import (
 )
 
 type Config struct {
-	Kubeconfig    string
-	Namespace     string
-	Postgres      PostgresConfig
-	Redis         RedisConfig
-	OPA           OPAConfig
-	LogLevel      string
-	WorkerThreads int
-	ServerAddress string
-	JWTSecret     string
-	AdminPassword string
+	Kubeconfig         string
+	Namespace          string
+	Postgres           PostgresConfig
+	Redis              RedisConfig
+	OPA                OPAConfig
+	SMTP               SMTPConfig
+	LogLevel           string
+	WorkerThreads      int
+	ServerAddress      string
+	JWTSecret          string
+	AdminPassword      string
+	EnableRegistration bool
+	BaseURL            string
 }
 
 type PostgresConfig struct {
@@ -39,32 +42,53 @@ type OPAConfig struct {
 	DataPath   string
 }
 
+type SMTPConfig struct {
+	Host      string
+	Port      int
+	User      string
+	Password  string
+	UseTLS    bool
+	FromEmail string
+	FromName  string
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		Kubeconfig:    os.Getenv("KUBECONFIG"),
-		Namespace:     getEnvOrDefault("NAMESPACE", ""),
-		ServerAddress: getEnvOrDefault("SERVER_ADDRESS", ":8080"),
-		JWTSecret:     getEnvOrDefault("JWT_SECRET", "change-me-in-production"),
+		Namespace:     GetEnvOrDefault("NAMESPACE", ""),
+		ServerAddress: GetEnvOrDefault("SERVER_ADDRESS", ":8080"),
+		JWTSecret:     GetEnvOrDefault("JWT_SECRET", "change-me-in-production"),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
 		Postgres: PostgresConfig{
-			Host:     getEnvOrDefault("POSTGRES_HOST", "localhost"),
-			Port:     getEnvAsIntOrDefault("POSTGRES_PORT", 5432),
+			Host:     GetEnvOrDefault("POSTGRES_HOST", "localhost"),
+			Port:     GetEnvAsIntOrDefault("POSTGRES_PORT", 5432),
 			User:     os.Getenv("POSTGRES_USER"),
 			Password: os.Getenv("POSTGRES_PASSWORD"),
 			Database: os.Getenv("POSTGRES_DB"),
 		},
 		Redis: RedisConfig{
-			Host:     getEnvOrDefault("REDIS_HOST", "localhost"),
-			Port:     getEnvAsIntOrDefault("REDIS_PORT", 6379),
+			Host:     GetEnvOrDefault("REDIS_HOST", "localhost"),
+			Port:     GetEnvAsIntOrDefault("REDIS_PORT", 6379),
 			Password: os.Getenv("REDIS_PASSWORD"),
-			DB:       getEnvAsIntOrDefault("REDIS_DB", 0),
+			DB:       GetEnvAsIntOrDefault("REDIS_DB", 0),
 		},
 		OPA: OPAConfig{
-			PolicyPath: getEnvOrDefault("OPA_POLICY_PATH", "configs/policy.rego"),
-			DataPath:   getEnvOrDefault("OPA_DATA_PATH", "configs/data.json"),
+			PolicyPath: GetEnvOrDefault("OPA_POLICY_PATH", "configs/policy.rego"),
+			DataPath:   GetEnvOrDefault("OPA_DATA_PATH", "configs/data.json"),
 		},
-		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
-		WorkerThreads: getEnvAsIntOrDefault("WORKER_THREADS", 1),
+		SMTP: SMTPConfig{
+			Host:      GetEnvOrDefault("SMTP_HOST", "localhost"),
+			Port:      GetEnvAsIntOrDefault("SMTP_PORT", 587),
+			User:      GetEnvOrDefault("SMTP_USER", ""),
+			Password:  GetEnvOrDefault("SMTP_PASSWORD", ""),
+			UseTLS:    GetEnvAsBoolOrDefault("SMTP_USE_TLS", true),
+			FromEmail: GetEnvOrDefault("SMTP_FROM_EMAIL", "noreply@idekube.io"),
+			FromName:  GetEnvOrDefault("SMTP_FROM_NAME", "IDEKube"),
+		},
+		LogLevel:           GetEnvOrDefault("LOG_LEVEL", "info"),
+		WorkerThreads:      GetEnvAsIntOrDefault("WORKER_THREADS", 1),
+		EnableRegistration: GetEnvAsBoolOrDefault("ENABLE_REGISTRATION", true),
+		BaseURL:            GetEnvOrDefault("BASE_URL", "http://localhost:8080"),
 	}
 
 	// Validate required fields
@@ -75,18 +99,25 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-func getEnvOrDefault(key, defaultValue string) string {
+func GetEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return defaultValue
 }
 
-func getEnvAsIntOrDefault(key string, defaultValue int) int {
+func GetEnvAsIntOrDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
 		}
+	}
+	return defaultValue
+}
+
+func GetEnvAsBoolOrDefault(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		return value == "true" || value == "True" || value == "TRUE" || value == "1"
 	}
 	return defaultValue
 }

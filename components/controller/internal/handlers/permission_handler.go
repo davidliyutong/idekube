@@ -38,15 +38,15 @@ type CheckPermissionResponse struct {
 // CheckPermission godoc
 // @Summary Check permission
 // @Description Check if a user has permission to perform an action on a resource
-// @Tags permissions
+// @Tags Permissions
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param request body CheckPermissionRequest true "Permission check request"
 // @Success 200 {object} models.APIResponse{data=CheckPermissionResponse}
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
 // @Router /permissions/check [post]
-// @Security BearerAuth
 func (h *PermissionHandler) CheckPermission(c *gin.Context) {
 	var req CheckPermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -92,16 +92,16 @@ type AssignRoleRequest struct {
 // AssignRole godoc
 // @Summary Assign role to user
 // @Description Assign a role to a specific user
-// @Tags permissions
+// @Tags Permissions
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param user_id path int true "User ID"
 // @Param request body AssignRoleRequest true "Role assignment request"
 // @Success 200 {object} models.APIResponse
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
 // @Router /users/{id}/roles [post]
-// @Security BearerAuth
 func (h *PermissionHandler) AssignRole(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
@@ -148,16 +148,16 @@ func (h *PermissionHandler) AssignRole(c *gin.Context) {
 // RemoveRole godoc
 // @Summary Remove role from user
 // @Description Remove a role from a specific user
-// @Tags permissions
+// @Tags Permissions
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param user_id path int true "User ID"
 // @Param role query string true "Role to remove"
 // @Success 200 {object} models.APIResponse
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
 // @Router /users/{id}/roles [delete]
-// @Security BearerAuth
 func (h *PermissionHandler) RemoveRole(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
@@ -209,14 +209,14 @@ type GetUserRolesResponse struct {
 // GetUserRoles godoc
 // @Summary Get user roles
 // @Description Get all roles assigned to a specific user
-// @Tags permissions
+// @Tags Permissions
 // @Produce json
+// @Security BearerAuth
 // @Param user_id path int true "User ID"
 // @Success 200 {object} models.APIResponse{data=GetUserRolesResponse}
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
 // @Router /users/{id}/roles [get]
-// @Security BearerAuth
 func (h *PermissionHandler) GetUserRoles(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
@@ -259,15 +259,15 @@ type AddPolicyRequest struct {
 // AddPolicy godoc
 // @Summary Add policy rule
 // @Description Add a new RBAC policy rule
-// @Tags permissions
+// @Tags Permissions
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param request body AddPolicyRequest true "Policy rule"
 // @Success 200 {object} models.APIResponse
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
 // @Router /policies [post]
-// @Security BearerAuth
 func (h *PermissionHandler) AddPolicy(c *gin.Context) {
 	var req AddPolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -301,15 +301,15 @@ func (h *PermissionHandler) AddPolicy(c *gin.Context) {
 // RemovePolicy godoc
 // @Summary Remove policy rule
 // @Description Remove an RBAC policy rule
-// @Tags permissions
+// @Tags Permissions
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param request body AddPolicyRequest true "Policy rule to remove"
 // @Success 200 {object} models.APIResponse
 // @Failure 400 {object} models.APIResponse
 // @Failure 500 {object} models.APIResponse
 // @Router /policies [delete]
-// @Security BearerAuth
 func (h *PermissionHandler) RemovePolicy(c *gin.Context) {
 	var req AddPolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -349,12 +349,12 @@ type GetAllPoliciesResponse struct {
 // GetAllPolicies godoc
 // @Summary Get all policies
 // @Description Get all RBAC policy rules
-// @Tags permissions
+// @Tags Permissions
 // @Produce json
+// @Security BearerAuth
 // @Success 200 {object} models.APIResponse{data=GetAllPoliciesResponse}
 // @Failure 500 {object} models.APIResponse
 // @Router /policies [get]
-// @Security BearerAuth
 func (h *PermissionHandler) GetAllPolicies(c *gin.Context) {
 	policies, err := h.permService.GetAllPolicies(c.Request.Context())
 	if err != nil {

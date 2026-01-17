@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
+	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
 	"github.com/google/uuid"
@@ -14,9 +15,10 @@ import (
 
 // VolumeService handles volume business logic
 type VolumeService struct {
-	volumeRepo     *repository.VolumeRepository
-	eventPublisher *queue.EventPublisher
-	logger         *zap.Logger
+	volumeRepo        *repository.VolumeRepository
+	eventPublisher    *queue.EventPublisher
+	logger            *zap.Logger
+	permissionService *permission.ResourcePermissionService
 }
 
 // NewVolumeService creates a new volume service
@@ -24,11 +26,13 @@ func NewVolumeService(
 	volumeRepo *repository.VolumeRepository,
 	eventPublisher *queue.EventPublisher,
 	logger *zap.Logger,
+	permissionService *permission.ResourcePermissionService,
 ) *VolumeService {
 	return &VolumeService{
-		volumeRepo:     volumeRepo,
-		eventPublisher: eventPublisher,
-		logger:         logger,
+		volumeRepo:        volumeRepo,
+		eventPublisher:    eventPublisher,
+		logger:            logger,
+		permissionService: permissionService,
 	}
 }
 
@@ -71,6 +75,27 @@ func (s *VolumeService) CreateVolume(ctx context.Context, req *models.CreateVolu
 	err := s.volumeRepo.Create(ctx, volume)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create volume: %w", err)
+	}
+
+	// Grant ownership permissions automatically (if permission service is available)
+	if s.permissionService != nil {
+		// Determine the actual user who created this volume
+		var creatorUserID int64
+		if req.OwnerType == models.OwnerTypeUser {
+			creatorUserID = req.OwnerID
+		} else {
+			// For organization volumes, the CreatedBy field should be set by the handler
+			// For now, we'll grant ownership to the OwnerID (which is the org)
+			// TODO: Track actual creator separately and grant them permissions
+			creatorUserID = req.OwnerID
+		}
+
+		if err := s.permissionService.GrantResourceOwnership(ctx, creatorUserID, "volume", volume.ID); err != nil {
+			s.logger.Warn("Failed to grant volume ownership permissions",
+				zap.Int64("volume_id", volume.ID),
+				zap.Int64("creator_id", creatorUserID),
+				zap.Error(err))
+		}
 	}
 
 	// Publish volume creation event to HouseKeeper

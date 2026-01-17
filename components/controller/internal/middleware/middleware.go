@@ -1,18 +1,22 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
+	"github.com/davidliyutong/idekube-controller/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 // AuditMiddleware logs all API requests to audit logs
-func AuditMiddleware(db *gorm.DB) gin.HandlerFunc {
+func AuditMiddleware(db *gorm.DB, logger *logger.Logger) gin.HandlerFunc {
 	auditRepo := repository.NewAuditLogRepository(db)
 
 	return func(c *gin.Context) {
@@ -45,14 +49,20 @@ func AuditMiddleware(db *gorm.DB) gin.HandlerFunc {
 		// Determine action from HTTP method and path
 		action := c.Request.Method + " " + c.Request.URL.Path
 
+		// FIXME: ResourceType and ResourceID could be improved by parsing the path
+		resourceType := "Unknown"
+		resourceID := ""
+
 		// Create audit log
 		log := &models.AuditLog{
-			UserID:    userID,
-			Username:  username,
-			Action:    action,
-			IPAddress: &ipAddress,
-			UserAgent: &userAgent,
-			Details: map[string]interface{}{
+			UserID:       userID,
+			Username:     username,
+			ResourceType: &resourceType,
+			ResourceID:   &resourceID,
+			Action:       action,
+			IPAddress:    &ipAddress,
+			UserAgent:    &userAgent,
+			Details: datatypes.JSONMap{
 				"status_code": c.Writer.Status(),
 				"method":      c.Request.Method,
 				"path":        c.Request.URL.Path,
@@ -61,9 +71,15 @@ func AuditMiddleware(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Save audit log asynchronously (don't block request)
-		go func() {
-			_ = auditRepo.Create(c.Request.Context(), log)
-		}()
+		go func(auditLog *models.AuditLog) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			err := auditRepo.Create(ctx, auditLog)
+			if err != nil {
+				// Log the error (in real implementation, use proper logging)
+				logger.Error("Failed to create audit log", "error", zap.Error(err))
+			}
+		}(log)
 	}
 }
 

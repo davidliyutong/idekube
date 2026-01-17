@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 // OrganizationMemberRole represents organization member role enum
@@ -17,17 +18,17 @@ const (
 
 // Organization represents an organization
 type Organization struct {
-	ID          int64                  `json:"id" db:"id"`
-	UUID        uuid.UUID              `json:"uuid" db:"uuid"`
-	Name        string                 `json:"name" db:"name"`
-	DisplayName *string                `json:"display_name,omitempty" db:"display_name"`
-	Description *string                `json:"description,omitempty" db:"description"`
-	AvatarURL   *string                `json:"avatar_url,omitempty" db:"avatar_url"`
-	OwnerID     int64                  `json:"owner_id" db:"owner_id"`
-	Settings    map[string]interface{} `json:"settings,omitempty" db:"settings"`
-	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at" db:"updated_at"`
-	DeletedAt   *time.Time             `json:"deleted_at,omitempty" db:"deleted_at"`
+	ID          int64             `json:"id" db:"id"`
+	UUID        uuid.UUID         `json:"uuid" db:"uuid"`
+	Name        string            `json:"name" db:"name"`
+	DisplayName *string           `json:"display_name,omitempty" db:"display_name"`
+	Description *string           `json:"description,omitempty" db:"description"`
+	AvatarURL   *string           `json:"avatar_url,omitempty" db:"avatar_url"`
+	OwnerID     int64             `json:"owner_id" db:"owner_id"`
+	Settings    datatypes.JSONMap `json:"settings,omitempty" db:"settings"`
+	CreatedAt   time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at" db:"updated_at"`
+	DeletedAt   *time.Time        `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // OrganizationMember represents a member of an organization
@@ -53,18 +54,18 @@ type OrganizationMemberWithUser struct {
 
 // CreateOrganizationRequest represents the request to create an organization
 type CreateOrganizationRequest struct {
-	Name        string                 `json:"name" binding:"required,min=3,max=255"`
-	DisplayName *string                `json:"display_name,omitempty"`
-	Description *string                `json:"description,omitempty"`
-	Settings    map[string]interface{} `json:"settings,omitempty"`
+	Name        string            `json:"name" binding:"required,min=3,max=255"`
+	DisplayName *string           `json:"display_name,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	Settings    datatypes.JSONMap `json:"settings,omitempty"`
 }
 
 // UpdateOrganizationRequest represents the request to update an organization
 type UpdateOrganizationRequest struct {
-	DisplayName *string                `json:"display_name,omitempty"`
-	Description *string                `json:"description,omitempty"`
-	AvatarURL   *string                `json:"avatar_url,omitempty"`
-	Settings    map[string]interface{} `json:"settings,omitempty"`
+	DisplayName *string           `json:"display_name,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	AvatarURL   *string           `json:"avatar_url,omitempty"`
+	Settings    datatypes.JSONMap `json:"settings,omitempty"`
 }
 
 // AddOrganizationMemberRequest represents the request to add a member to an organization

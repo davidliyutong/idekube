@@ -74,22 +74,30 @@ func main() {
 }
 
 func runController(cmd *cobra.Command, args []string) error {
-	// Initialize zap logger
+	// Load configuration first to get LOG_LEVEL
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Initialize zap logger with LOG_LEVEL from config
 	zapConfig := zap.NewProductionConfig()
 	zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	// Parse and set log level from config
+	logLevel, err := zapcore.ParseLevel(cfg.LogLevel)
+	if err != nil {
+		logLevel = zapcore.InfoLevel // Default to info level if invalid
+	}
+	zapConfig.Level = zap.NewAtomicLevelAt(logLevel)
+
 	zapLogger, err := zapConfig.Build()
 	if err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	defer zapLogger.Sync()
 
-	zapLogger.Info("Starting idekube-controller")
-
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
+	zapLogger.Info("Starting idekube-controller", zap.String("log_level", cfg.LogLevel))
 
 	// Override server address if provided via flag
 	if serverAddr != "" {
@@ -121,6 +129,9 @@ func runController(cmd *cobra.Command, args []string) error {
 	// Get GORM DB instance
 	gormDB := db.DB()
 
+	// Configure GORM logger with zap integration and LOG_LEVEL
+	gormDB.Logger = config.NewGormLogger(zapLogger)
+
 	// Initialize Redis connection
 	redisConfig := &redisClient.Config{
 		Host:     cfg.Redis.Host,
@@ -150,6 +161,7 @@ func runController(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize OPA enforcer: %w", err)
 	}
 	permissionService := permission.NewPermissionService(opaEnforcer, log)
+	resourcePermissionService := permission.NewResourcePermissionService(permissionService)
 	zapLogger.Info("OPA enforcer and permission service initialized",
 		zap.String("policy_path", cfg.OPA.PolicyPath),
 		zap.String("data_path", cfg.OPA.DataPath))
@@ -163,6 +175,10 @@ func runController(cmd *cobra.Command, args []string) error {
 	quotaRepo := repository.NewQuotaRepository(gormDB)
 	workspaceTransferRepo := repository.NewWorkspaceTransferRepository(gormDB)
 	settingRepo := repository.NewSettingRepository(gormDB)
+	apiKeyRepo := repository.NewAPIKeyRepository(gormDB)
+	webhookRepo := repository.NewWebhookRepository(gormDB)
+	oidcProviderRepo := repository.NewOIDCProviderRepository(gormDB)
+	oauthSessionRepo := repository.NewOAuthSessionRepository(gormDB)
 
 	// Initialize message queue event publisher
 	eventPublisher, err := queue.NewEventPublisher(redisQueue, zapLogger)
@@ -195,14 +211,32 @@ func runController(cmd *cobra.Command, args []string) error {
 	loginAttemptService := services.NewLoginAttemptService(redis, settingService)
 
 	userService := services.NewUserService(userRepo, jwtManager, eventPublisher, loginAttemptService)
+	mfaService := services.NewMFAService(userRepo)
 	templateService := services.NewTemplateService(templateRepo, orgRepo)
-	volumeService := services.NewVolumeService(volumeRepo, eventPublisher, zapLogger)
-	workspaceService := services.NewWorkspaceService(workspaceRepo, templateRepo, volumeRepo, eventPublisher, zapLogger)
+	volumeService := services.NewVolumeService(volumeRepo, eventPublisher, zapLogger, resourcePermissionService)
+	workspaceService := services.NewWorkspaceService(workspaceRepo, templateRepo, volumeRepo, eventPublisher, zapLogger, resourcePermissionService)
 	workspaceTransferService := services.NewWorkspaceTransferService(workspaceTransferRepo, workspaceRepo, userRepo)
 	quotaService := services.NewQuotaService(quotaRepo, workspaceRepo, volumeRepo)
+	apiKeyService := services.NewAPIKeyService(apiKeyRepo)
+	webhookService := services.NewWebhookService(webhookRepo)
+	oidcService := services.NewOIDCService(oidcProviderRepo, userRepo, oauthSessionRepo)
+	
+	// EmailService with SMTP configuration
+	emailService := services.NewEmailService(
+		userRepo,
+		oauthSessionRepo,
+		cfg.SMTP.Host,
+		cfg.SMTP.Port,
+		cfg.SMTP.User,
+		cfg.SMTP.Password,
+		cfg.SMTP.UseTLS,
+		cfg.SMTP.FromEmail,
+		cfg.SMTP.FromName,
+		cfg.BaseURL,
+	)
 
-	// OrganizationService needs UserService for SearchUsersForInvite
-	orgService := services.NewOrganizationService(orgRepo, userRepo, userService, eventPublisher)
+	// OrganizationService needs UserService for SearchUsersForInvite and ResourcePermissionService
+	orgService := services.NewOrganizationService(orgRepo, userRepo, userService, eventPublisher, resourcePermissionService)
 
 	// Setup context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -240,17 +274,35 @@ func runController(cmd *cobra.Command, args []string) error {
 	_ = quotaService
 
 	// Initialize handlers
-	userHandler := handlers.NewUserHandler(userService)
+	userHandler := handlers.NewUserHandler(userService, cfg.EnableRegistration)
+	mfaHandler := handlers.NewMFAHandler(mfaService)
 	orgHandler := handlers.NewOrganizationHandler(orgService)
 	templateHandler := handlers.NewTemplateHandler(templateService)
 	volumeHandler := handlers.NewVolumeHandler(volumeService)
 	workspaceHandler := handlers.NewWorkspaceHandler(workspaceService, workspaceTransferService)
 	permissionHandler := handlers.NewPermissionHandler(permissionService)
 	settingHandler := handlers.NewSettingHandler(settingService)
+	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyService)
+	emailHandler := handlers.NewEmailHandler(emailService)
+	oidcHandler := handlers.NewOIDCHandler(oidcService, userService, jwtManager)
+	webhookHandler := handlers.NewWebhookHandler(webhookService)
 
 	// Create and setup API server
-	server := api.NewServer(gormDB, jwtManager, permissionService)
-	server.SetupRoutes(userHandler, orgHandler, templateHandler, workspaceHandler, volumeHandler, permissionHandler, settingHandler)
+	server := api.NewServer(gormDB, jwtManager, permissionService, log)
+	server.SetupRoutes(
+		userHandler,
+		mfaHandler,
+		orgHandler,
+		templateHandler,
+		workspaceHandler,
+		volumeHandler,
+		permissionHandler,
+		settingHandler,
+		apiKeyHandler,
+		emailHandler,
+		oidcHandler,
+		webhookHandler,
+	)
 
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)

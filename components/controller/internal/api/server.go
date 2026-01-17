@@ -5,10 +5,13 @@ import (
 	"net/http"
 	"time"
 
+	_ "github.com/davidliyutong/idekube-controller/docs/api"
 	"github.com/davidliyutong/idekube-controller/internal/handlers"
 	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
 	"github.com/davidliyutong/idekube-controller/internal/permission"
+	"github.com/davidliyutong/idekube-controller/internal/version"
+	"github.com/davidliyutong/idekube-controller/pkg/logger"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -23,10 +26,11 @@ type Server struct {
 	jwtManager        *middleware.JWTManager
 	permissionService *permission.PermissionService
 	rateLimiter       *middleware.RateLimiter
+	logger            *logger.Logger
 }
 
 // NewServer creates a new API server
-func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, permissionService *permission.PermissionService) *Server {
+func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, permissionService *permission.PermissionService, logger *logger.Logger) *Server {
 	// Create rate limiter: 100 requests per minute per IP
 	rateLimiter := middleware.NewRateLimiter(middleware.RateLimitConfig{
 		RequestsPerMinute: 100,
@@ -39,18 +43,24 @@ func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, permissionService
 		jwtManager:        jwtManager,
 		permissionService: permissionService,
 		rateLimiter:       rateLimiter,
+		logger:            logger,
 	}
 }
 
 // SetupRoutes sets up all API routes
 func (s *Server) SetupRoutes(
 	userHandler *handlers.UserHandler,
+	mfaHandler *handlers.MFAHandler,
 	orgHandler *handlers.OrganizationHandler,
 	templateHandler *handlers.TemplateHandler,
 	workspaceHandler *handlers.WorkspaceHandler,
 	volumeHandler *handlers.VolumeHandler,
 	permissionHandler *handlers.PermissionHandler,
 	settingHandler *handlers.SettingHandler,
+	apiKeyHandler *handlers.APIKeyHandler,
+	emailHandler *handlers.EmailHandler,
+	oidcHandler *handlers.OIDCHandler,
+	webhookHandler *handlers.WebhookHandler,
 ) {
 	// Apply global middleware
 	s.router.Use(middleware.SecurityMiddleware())                         // Security headers
@@ -59,10 +69,13 @@ func (s *Server) SetupRoutes(
 	s.router.Use(middleware.MaliciousRouteInterceptor())                  // Block suspicious routes
 	s.router.Use(middleware.CORSMiddleware())
 	s.router.Use(middleware.RequestIDMiddleware())
-	s.router.Use(middleware.AuditMiddleware(s.db))
+	s.router.Use(middleware.AuditMiddleware(s.db, s.logger))
 
 	// Swagger documentation
 	s.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	s.router.GET("/swagger", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+	})
 
 	// Health check
 	s.router.GET("/health", func(c *gin.Context) {
@@ -71,7 +84,7 @@ func (s *Server) SetupRoutes(
 			Message: "OK",
 			Data: map[string]interface{}{
 				"status":  "healthy",
-				"version": "v1.0.0",
+				"version": version.Get(),
 			},
 		})
 	})
@@ -83,11 +96,17 @@ func (s *Server) SetupRoutes(
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/login", userHandler.Login)
-			auth.POST("/register", userHandler.Register)
 			auth.POST("/refresh", userHandler.RefreshToken)
-			// TODO: Add OIDC routes
-			// auth.GET("/oidc/login", oidcHandler.Login)
-			// auth.GET("/oidc/callback", oidcHandler.Callback)
+			auth.POST("/register", userHandler.Register)
+			
+			// Email verification and password reset (public)
+			auth.GET("/verify-email", emailHandler.VerifyEmail)
+			auth.POST("/request-password-reset", emailHandler.RequestPasswordReset)
+			auth.POST("/reset-password", emailHandler.ResetPassword)
+			
+			// OIDC routes (public)
+			auth.GET("/oidc/:provider/login", oidcHandler.InitiateLogin)
+			auth.GET("/oidc/:provider/callback", oidcHandler.HandleCallback)
 		}
 
 		// Protected routes (all require authentication via JWT)
@@ -112,6 +131,13 @@ func (s *Server) SetupRoutes(
 				users.PUT("/me", userHandler.UpdateProfile)
 				users.POST("/me/password", userHandler.ChangePassword)
 				users.GET("/:id", userHandler.GetUser)
+
+				// MFA routes
+				// FIXME: Uncomment once MFAHandler is properly integrated
+				// users.POST("/me/mfa/enable", mfaHandler.EnableMFA)
+				// users.POST("/me/mfa/verify", mfaHandler.VerifyMFASetup)
+				// users.POST("/me/mfa/backup-codes", mfaHandler.GenerateBackupCodes)
+				// users.POST("/me/mfa/disable", mfaHandler.DisableMFA)
 
 				// Power user and Admin routes
 				users.GET("/check", userHandler.CheckUserExists)
@@ -245,10 +271,39 @@ func (s *Server) SetupRoutes(
 				settings.GET("/:key", settingHandler.GetSetting)
 				settings.PUT("/:key", settingHandler.UpdateSetting)
 			}
-		}
 
-		// Public settings route (no authentication required)
-		v1.GET("/settings/public", settingHandler.GetPublicSettings)
+			// API Key routes (authenticated users)
+			apiKeys := protected.Group("/api-keys")
+			apiKeys.Use(middleware.RBACCheckEndpoint(s.permissionService, "api_key"))
+			{
+				apiKeys.POST("", apiKeyHandler.CreateAPIKey)
+				apiKeys.GET("", apiKeyHandler.ListAPIKeys)
+				apiKeys.GET("/:id", apiKeyHandler.GetAPIKey)
+				apiKeys.DELETE("/:id", apiKeyHandler.RevokeAPIKey)
+			}
+
+			// Webhook routes (authenticated users)
+			webhooks := protected.Group("/webhooks")
+			webhooks.Use(middleware.RBACCheckEndpoint(s.permissionService, "webhook"))
+			{
+				webhooks.POST("", webhookHandler.CreateWebhook)
+				webhooks.GET("", webhookHandler.ListWebhooks)
+				webhooks.GET("/:id", webhookHandler.GetWebhook)
+				webhooks.PUT("/:id", webhookHandler.UpdateWebhook)
+				webhooks.DELETE("/:id", webhookHandler.DeleteWebhook)
+				webhooks.POST("/:id/test", webhookHandler.TestWebhook)
+			}
+
+			// OIDC Provider management routes (admin only)
+			oidcProviders := protected.Group("/oidc/providers")
+			oidcProviders.Use(middleware.RBACCheckEndpoint(s.permissionService, "oidc_provider"))
+			{
+				oidcProviders.POST("", oidcHandler.CreateProvider)
+				oidcProviders.GET("", oidcHandler.ListProviders)
+				oidcProviders.PUT("/:id", oidcHandler.UpdateProvider)
+				oidcProviders.DELETE("/:id", oidcHandler.DeleteProvider)
+			}
+		}
 	}
 }
 

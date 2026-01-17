@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
+	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
 	"github.com/google/uuid"
@@ -14,10 +15,11 @@ import (
 
 // OrganizationService handles organization business logic
 type OrganizationService struct {
-	orgRepo        *repository.OrganizationRepository
-	userRepo       *repository.UserRepository
-	userService    *UserService
-	eventPublisher *queue.EventPublisher
+	orgRepo           *repository.OrganizationRepository
+	userRepo          *repository.UserRepository
+	userService       *UserService
+	eventPublisher    *queue.EventPublisher
+	permissionService *permission.ResourcePermissionService
 }
 
 // NewOrganizationService creates a new organization service
@@ -26,12 +28,14 @@ func NewOrganizationService(
 	userRepo *repository.UserRepository,
 	userService *UserService,
 	eventPublisher *queue.EventPublisher,
+	permissionService *permission.ResourcePermissionService,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:        orgRepo,
-		userRepo:       userRepo,
-		userService:    userService,
-		eventPublisher: eventPublisher,
+		orgRepo:           orgRepo,
+		userRepo:          userRepo,
+		userService:       userService,
+		eventPublisher:    eventPublisher,
+		permissionService: permissionService,
 	}
 }
 
@@ -70,6 +74,17 @@ func (s *OrganizationService) CreateOrganization(ctx context.Context, ownerID in
 	err = s.orgRepo.AddMember(ctx, member)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add owner as member: %w", err)
+	}
+
+	// Grant ownership permissions automatically (if permission service is available)
+	if s.permissionService != nil {
+		if err := s.permissionService.GrantResourceOwnership(ctx, ownerID, "organization", org.ID); err != nil {
+			// Log warning but don't fail the creation - permissions can be fixed later
+			zap.L().Warn("Failed to grant organization ownership permissions",
+				zap.Int64("org_id", org.ID),
+				zap.Int64("owner_id", ownerID),
+				zap.Error(err))
+		}
 	}
 
 	return org, nil
@@ -206,6 +221,28 @@ func (s *OrganizationService) AddMember(ctx context.Context, orgID int64, req *m
 		return nil, fmt.Errorf("failed to add member: %w", err)
 	}
 
+	// Grant organization membership permissions (if permission service is available)
+	if s.permissionService != nil {
+		if err := s.permissionService.GrantOrganizationMembership(ctx, user.ID, orgID, string(role)); err != nil {
+			zap.L().Warn("Failed to grant organization membership permissions",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", user.ID),
+				zap.String("role", string(role)),
+				zap.Error(err))
+		}
+
+		// Grant access to organization resources (workspaces, volumes, etc.)
+		for _, resourceType := range []string{"workspace", "volume"} {
+			if err := s.permissionService.GrantOrganizationResourceAccess(ctx, user.ID, orgID, resourceType); err != nil {
+				zap.L().Warn("Failed to grant organization resource access",
+					zap.Int64("org_id", orgID),
+					zap.Int64("user_id", user.ID),
+					zap.String("resource_type", resourceType),
+					zap.Error(err))
+			}
+		}
+	}
+
 	return member, nil
 }
 
@@ -221,7 +258,22 @@ func (s *OrganizationService) RemoveMember(ctx context.Context, orgID, userID in
 		return fmt.Errorf("cannot remove the owner from the organization")
 	}
 
-	return s.orgRepo.RemoveMember(ctx, orgID, userID)
+	err = s.orgRepo.RemoveMember(ctx, orgID, userID)
+	if err != nil {
+		return err
+	}
+
+	// Revoke organization permissions (if permission service is available)
+	if s.permissionService != nil {
+		if err := s.permissionService.RevokeResourcePermissions(ctx, userID, "organization", orgID); err != nil {
+			zap.L().Warn("Failed to revoke organization permissions",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", userID),
+				zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 // UpdateMemberRole updates a member's role
@@ -236,9 +288,36 @@ func (s *OrganizationService) UpdateMemberRole(ctx context.Context, orgID, userI
 		return nil, fmt.Errorf("cannot change the owner's role")
 	}
 
+	// Get old role before update
+	oldMember, err := s.orgRepo.GetMember(ctx, orgID, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	err = s.orgRepo.UpdateMemberRole(ctx, orgID, userID, req.Role)
 	if err != nil {
 		return nil, err
+	}
+
+	// Update permissions if role changed (if permission service is available)
+	if s.permissionService != nil && oldMember.Role != req.Role {
+		// Revoke old role permissions
+		if err := s.permissionService.RevokeResourcePermissions(ctx, userID, "organization", orgID); err != nil {
+			zap.L().Warn("Failed to revoke old organization permissions",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", userID),
+				zap.String("old_role", string(oldMember.Role)),
+				zap.Error(err))
+		}
+
+		// Grant new role permissions
+		if err := s.permissionService.GrantOrganizationMembership(ctx, userID, orgID, string(req.Role)); err != nil {
+			zap.L().Warn("Failed to grant new organization permissions",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", userID),
+				zap.String("new_role", string(req.Role)),
+				zap.Error(err))
+		}
 	}
 
 	return s.orgRepo.GetMember(ctx, orgID, userID)
@@ -283,8 +362,43 @@ func (s *OrganizationService) PromoteToAdmin(ctx context.Context, orgID, targetU
 		return fmt.Errorf("user is already the owner")
 	}
 
-	// Update role
-	return s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleAdmin)
+	// Get current member info
+	member, err := s.orgRepo.GetMember(ctx, orgID, targetUserID)
+	if err != nil {
+		return fmt.Errorf("user is not a member of this organization")
+	}
+
+	// Check if already admin
+	if member.Role == models.OrgRoleAdmin {
+		return fmt.Errorf("user is already an admin")
+	}
+
+	// Update role in database
+	err = s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleAdmin)
+	if err != nil {
+		return err
+	}
+
+	// Update permissions (if permission service is available)
+	if s.permissionService != nil {
+		// Revoke old member permissions
+		if err := s.permissionService.RevokeResourcePermissions(ctx, targetUserID, "organization", orgID); err != nil {
+			zap.L().Warn("Failed to revoke old permissions during promotion",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", targetUserID),
+				zap.Error(err))
+		}
+
+		// Grant admin permissions
+		if err := s.permissionService.GrantOrganizationMembership(ctx, targetUserID, orgID, "admin"); err != nil {
+			zap.L().Warn("Failed to grant admin permissions",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", targetUserID),
+				zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 // DemoteFromAdmin demotes an admin to member role (owner only)
@@ -304,8 +418,43 @@ func (s *OrganizationService) DemoteFromAdmin(ctx context.Context, orgID, target
 		return fmt.Errorf("cannot demote the owner")
 	}
 
-	// Update role
-	return s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleMember)
+	// Get current member info
+	member, err := s.orgRepo.GetMember(ctx, orgID, targetUserID)
+	if err != nil {
+		return fmt.Errorf("user is not a member of this organization")
+	}
+
+	// Check if user is admin
+	if member.Role != models.OrgRoleAdmin {
+		return fmt.Errorf("user is not an admin")
+	}
+
+	// Update role in database
+	err = s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleMember)
+	if err != nil {
+		return err
+	}
+
+	// Update permissions (if permission service is available)
+	if s.permissionService != nil {
+		// Revoke admin permissions
+		if err := s.permissionService.RevokeResourcePermissions(ctx, targetUserID, "organization", orgID); err != nil {
+			zap.L().Warn("Failed to revoke admin permissions during demotion",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", targetUserID),
+				zap.Error(err))
+		}
+
+		// Grant member permissions
+		if err := s.permissionService.GrantOrganizationMembership(ctx, targetUserID, orgID, "member"); err != nil {
+			zap.L().Warn("Failed to grant member permissions",
+				zap.Int64("org_id", orgID),
+				zap.Int64("user_id", targetUserID),
+				zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 // GetUserOrganizationRole gets user's role in an organization

@@ -23,7 +23,7 @@ func NewSettingHandler(settingService *services.SettingService) *SettingHandler 
 // GetAllSettings godoc
 // @Summary 获取所有系统设置
 // @Description 获取系统的所有配置项（需要admin权限）
-// @Tags 系统设置
+// @Tags Settings
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -31,7 +31,7 @@ func NewSettingHandler(settingService *services.SettingService) *SettingHandler 
 // @Failure 401 {object} models.APIResponse "未授权"
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /api/v1/settings [get]
+// @Router /settings [get]
 func (h *SettingHandler) GetAllSettings(c *gin.Context) {
 	settings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -63,7 +63,7 @@ func (h *SettingHandler) GetAllSettings(c *gin.Context) {
 // GetSetting godoc
 // @Summary 获取单个系统设置
 // @Description 根据key获取指定的配置项（需要admin权限）
-// @Tags 系统设置
+// @Tags Settings
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -73,7 +73,7 @@ func (h *SettingHandler) GetAllSettings(c *gin.Context) {
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Failure 404 {object} models.APIResponse "配置项不存在"
 // @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /api/v1/settings/{key} [get]
+// @Router /settings/{key} [get]
 func (h *SettingHandler) GetSetting(c *gin.Context) {
 	key := c.Param("key")
 
@@ -99,7 +99,7 @@ func (h *SettingHandler) GetSetting(c *gin.Context) {
 // UpdateSetting godoc
 // @Summary 更新单个系统设置
 // @Description 更新指定key的配置项值（需要admin权限）
-// @Tags 系统设置
+// @Tags Settings
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -111,7 +111,7 @@ func (h *SettingHandler) GetSetting(c *gin.Context) {
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Failure 404 {object} models.APIResponse "配置项不存在"
 // @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /api/v1/settings/{key} [put]
+// @Router /settings/{key} [put]
 func (h *SettingHandler) UpdateSetting(c *gin.Context) {
 	key := c.Param("key")
 
@@ -175,7 +175,7 @@ func (h *SettingHandler) UpdateSetting(c *gin.Context) {
 // BatchUpdateSettings godoc
 // @Summary 批量更新系统设置
 // @Description 批量更新多个配置项（需要admin权限）
-// @Tags 系统设置
+// @Tags Settings
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -185,7 +185,7 @@ func (h *SettingHandler) UpdateSetting(c *gin.Context) {
 // @Failure 401 {object} models.APIResponse "未授权"
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /api/v1/settings [put]
+// @Router /settings [put]
 func (h *SettingHandler) BatchUpdateSettings(c *gin.Context) {
 	var req models.BatchUpdateSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -233,42 +233,5 @@ func (h *SettingHandler) BatchUpdateSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Settings updated successfully",
-	})
-}
-
-// GetPublicSettings godoc
-// @Summary 获取公开的系统设置
-// @Description 获取所有is_public=true的配置项（无需认证）
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} models.APIResponse{data=models.GetSettingsResponse} "获取成功"
-// @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /api/v1/settings/public [get]
-func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
-	settings, err := h.settingService.GetPublicSettings(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "QUERY_FAILED",
-				Message: "Failed to retrieve public settings",
-				Details: err.Error(),
-			},
-		})
-		return
-	}
-
-	// Convert to response format
-	responses := make([]models.SettingResponse, len(settings))
-	for i, setting := range settings {
-		responses[i] = setting.ToResponse()
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data: models.GetSettingsResponse{
-			Settings: responses,
-		},
 	})
 }

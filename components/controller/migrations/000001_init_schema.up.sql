@@ -11,7 +11,7 @@ CREATE TABLE users (
     username VARCHAR(255) NOT NULL UNIQUE,
     email VARCHAR(255) UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'user', -- super_admin, admin, user
+    role VARCHAR(50) NOT NULL DEFAULT 'user', -- super_admin, admin, power_user, user
     status VARCHAR(50) NOT NULL DEFAULT 'active', -- active, inactive, suspended
     avatar_url TEXT,
     display_name VARCHAR(255),

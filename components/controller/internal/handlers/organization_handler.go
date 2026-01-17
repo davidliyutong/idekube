@@ -25,7 +25,7 @@ func NewOrganizationHandler(orgService *services.OrganizationService) *Organizat
 // CreateOrganization godoc
 // @Summary 创建组织
 // @Description 创建新的组织
-// @Tags 组织
+// @Tags Organization 
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -72,7 +72,7 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 // GetOrganization godoc
 // @Summary 获取组织详情
 // @Description 根据ID获取组织的详细信息
-// @Tags 组织
+// @Tags Organization 
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -138,7 +138,7 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 // ListUserOrganizations godoc
 // @Summary 列出用户的组织
 // @Description 获取当前用户所属的所有组织
-// @Tags 组织
+// @Tags Organization 
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -223,7 +223,7 @@ func (h *OrganizationHandler) ListUserOrganizations(c *gin.Context) {
 // UpdateOrganization godoc
 // @Summary 更新组织
 // @Description 更新组织信息
-// @Tags 组织
+// @Tags Organization 
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -298,7 +298,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 // DeleteOrganization godoc
 // @Summary 删除组织
 // @Description 删除指定的组织（仅所有者可操作）
-// @Tags 组织
+// @Tags Organization 
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -359,7 +359,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
 // AddMember godoc
 // @Summary 添加组织成员
 // @Description 向组织添加新成员（需要管理员权限）
-// @Tags 组织成员
+// @Tags Organization Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -434,7 +434,7 @@ func (h *OrganizationHandler) AddMember(c *gin.Context) {
 // RemoveMember godoc
 // @Summary 移除组织成员
 // @Description 从组织中移除成员（需要管理员权限）
-// @Tags 组织成员
+// @Tags Organization Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -509,7 +509,7 @@ func (h *OrganizationHandler) RemoveMember(c *gin.Context) {
 // UpdateMemberRole godoc
 // @Summary 更新成员角色
 // @Description 更新组织成员的角色（仅所有者可操作）
-// @Tags 组织成员
+// @Tags Organization Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -595,69 +595,10 @@ func (h *OrganizationHandler) UpdateMemberRole(c *gin.Context) {
 	})
 }
 
-// ListAllOrganizations godoc
-// @Summary 列出所有组织
-// @Description 获取系统中所有组织（仅管理员）
-// @Tags 组织管理
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param page query int false "页码" default(1)
-// @Param page_size query int false "每页数量" default(10)
-// @Success 200 {object} models.APIResponse{data=models.PaginatedResponse} "成功"
-// @Failure 400 {object} models.APIResponse "请求参数错误"
-// @Failure 401 {object} models.APIResponse "未认证"
-// @Failure 403 {object} models.APIResponse "权限不足"
-// @Failure 500 {object} models.APIResponse "内部服务器错误"
-// @Router /admin/organizations [get]
-func (h *OrganizationHandler) ListAllOrganizations(c *gin.Context) {
-	var opts models.ListOptions
-	if err := c.ShouldBindQuery(&opts); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid query parameters",
-				Details: err.Error(),
-			},
-		})
-		return
-	}
-
-	organizations, total, err := h.orgService.ListAllOrganizations(c.Request.Context(), &opts)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: "Failed to list organizations",
-				Details: err.Error(),
-			},
-		})
-		return
-	}
-
-	totalPages := int(total) / opts.PageSize
-	if int(total)%opts.PageSize > 0 {
-		totalPages++
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data: models.PaginatedResponse{
-			Items:      organizations,
-			Total:      total,
-			Page:       opts.Page,
-			PageSize:   opts.PageSize,
-			TotalPages: totalPages,
-		},
-	})
-}
-
 // PromoteToAdmin godoc
 // @Summary 提升为管理员
 // @Description 将组织成员提升为管理员（仅所有者可操作）
-// @Tags 组织成员
+// @Tags Organization Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -732,7 +673,7 @@ func (h *OrganizationHandler) PromoteToAdmin(c *gin.Context) {
 // DemoteFromAdmin godoc
 // @Summary 降级管理员
 // @Description 将管理员降级为普通成员（仅所有者可操作）
-// @Tags 组织成员
+// @Tags Organization Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -807,7 +748,7 @@ func (h *OrganizationHandler) DemoteFromAdmin(c *gin.Context) {
 // SearchUsers godoc
 // @Summary 搜索用户
 // @Description 搜索用户以邀请加入组织（需要管理员权限）
-// @Tags 组织成员
+// @Tags Organization Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth

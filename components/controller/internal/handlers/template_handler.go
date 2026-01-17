@@ -25,7 +25,7 @@ func NewTemplateHandler(templateService *services.TemplateService) *TemplateHand
 // CreateTemplate godoc
 // @Summary 创建模板
 // @Description 创建新的工作区模板
-// @Tags 模板
+// @Tags Templates
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -73,7 +73,7 @@ func (h *TemplateHandler) CreateTemplate(c *gin.Context) {
 // GetTemplate godoc
 // @Summary 获取模板详情
 // @Description 根据ID获取模板的详细信息
-// @Tags 模板
+// @Tags Templates
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -134,7 +134,7 @@ func (h *TemplateHandler) GetTemplate(c *gin.Context) {
 // ListTemplates godoc
 // @Summary 列出模板
 // @Description 根据用户权限列出可访问的模板
-// @Tags 模板
+// @Tags Templates
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -259,7 +259,7 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 // UpdateTemplate godoc
 // @Summary 更新模板
 // @Description 更新模板配置信息
-// @Tags 模板
+// @Tags Templates
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -355,7 +355,7 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 // DeleteTemplate godoc
 // @Summary 删除模板
 // @Description 删除指定的模板
-// @Tags 模板
+// @Tags Templates
 // @Accept json
 // @Produce json
 // @Security BearerAuth

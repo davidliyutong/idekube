@@ -6,11 +6,12 @@ MIGRATE_TOOL := migrate
 DOCKER_REGISTRY ?= docker.io
 DOCKER_IMAGE := ${DOCKER_REGISTRY}/davidliyutong/${APP_NAME}
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
+VERSION_PATH = "github.com/davidliyutong/idekube-controller/internal/version.Version"
 
 # Build the application
 build:
 	@echo "Building ${APP_NAME}..."
-	go build -o bin/${APP_NAME} ./cmd/controller
+	go build -ldflags "-X ${VERSION_PATH}=${VERSION}" -o bin/${APP_NAME} ./cmd/controller
 	@echo "Build complete: bin/${APP_NAME}"
 
 # Build migration CLI tool
@@ -21,7 +22,7 @@ build-migrate:
 
 # Run the application
 run:
-	set -a; source .env; set +a; go run ./cmd/controller
+	set -a; source .env; set +a; go run -ldflags "-X ${VERSION_PATH}=${VERSION}" ./cmd/controller
 
 # Run with hot reload (requires air)
 dev:

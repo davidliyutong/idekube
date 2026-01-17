@@ -30,7 +30,7 @@ func NewWorkspaceHandler(
 // CreateWorkspace godoc
 // @Summary 创建工作区
 // @Description 创建新的工作区实例
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -75,7 +75,7 @@ func (h *WorkspaceHandler) CreateWorkspace(c *gin.Context) {
 // GetWorkspace godoc
 // @Summary 获取工作区详情
 // @Description 根据ID获取工作区的详细信息
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -120,7 +120,7 @@ func (h *WorkspaceHandler) GetWorkspace(c *gin.Context) {
 // ListWorkspaces godoc
 // @Summary 列出工作区
 // @Description 根据用户权限列出可访问的工作区
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -235,7 +235,7 @@ func (h *WorkspaceHandler) ListWorkspaces(c *gin.Context) {
 // UpdateWorkspace godoc
 // @Summary 更新工作区
 // @Description 更新工作区配置信息
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -294,7 +294,7 @@ func (h *WorkspaceHandler) UpdateWorkspace(c *gin.Context) {
 // DeleteWorkspace godoc
 // @Summary 删除工作区
 // @Description 删除指定的工作区
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -339,7 +339,7 @@ func (h *WorkspaceHandler) DeleteWorkspace(c *gin.Context) {
 // StartWorkspace godoc
 // @Summary 启动工作区
 // @Description 启动已停止的工作区
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -386,7 +386,7 @@ func (h *WorkspaceHandler) StartWorkspace(c *gin.Context) {
 // StopWorkspace godoc
 // @Summary 停止工作区
 // @Description 停止正在运行的工作区
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -433,7 +433,7 @@ func (h *WorkspaceHandler) StopWorkspace(c *gin.Context) {
 // AttachVolume godoc
 // @Summary 挂载存储卷
 // @Description 将存储卷挂载到工作区
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -508,7 +508,7 @@ func (h *WorkspaceHandler) AttachVolume(c *gin.Context) {
 // DetachVolume godoc
 // @Summary 卸载存储卷
 // @Description 从工作区卸载存储卷
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -567,7 +567,7 @@ func (h *WorkspaceHandler) DetachVolume(c *gin.Context) {
 // InitiateTransfer godoc
 // @Summary 发起工作区转让
 // @Description 工作区所有者发起将工作区转让给其他用户的请求
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -634,7 +634,7 @@ func (h *WorkspaceHandler) InitiateTransfer(c *gin.Context) {
 // RespondToTransfer godoc
 // @Summary 响应工作区转让请求
 // @Description 接收方接受或拒绝工作区转让请求
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -701,7 +701,7 @@ func (h *WorkspaceHandler) RespondToTransfer(c *gin.Context) {
 // CancelTransfer godoc
 // @Summary 取消工作区转让请求
 // @Description 发起方取消待处理的工作区转让请求
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -753,7 +753,7 @@ func (h *WorkspaceHandler) CancelTransfer(c *gin.Context) {
 // ListPendingTransfers godoc
 // @Summary 列出待处理的工作区转让请求
 // @Description 获取当前用户收到的所有待处理转让请求
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -788,7 +788,7 @@ func (h *WorkspaceHandler) ListPendingTransfers(c *gin.Context) {
 // GetTransfer godoc
 // @Summary 获取转让请求详情
 // @Description 获取特定转让请求的详细信息
-// @Tags 工作区
+// @Tags Workspaces
 // @Accept json
 // @Produce json
 // @Security BearerAuth

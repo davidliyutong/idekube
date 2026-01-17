@@ -25,7 +25,7 @@ func NewVolumeHandler(volumeService *services.VolumeService) *VolumeHandler {
 // CreateVolume godoc
 // @Summary 创建存储卷
 // @Description 创建新的持久化存储卷
-// @Tags 存储卷
+// @Tags Volumes
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -70,7 +70,7 @@ func (h *VolumeHandler) CreateVolume(c *gin.Context) {
 // GetVolume godoc
 // @Summary 获取存储卷详情
 // @Description 根据ID获取存储卷的详细信息
-// @Tags 存储卷
+// @Tags Volumes
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -115,7 +115,7 @@ func (h *VolumeHandler) GetVolume(c *gin.Context) {
 // ListVolumes godoc
 // @Summary 列出存储卷
 // @Description 根据用户权限列出可访问的存储卷
-// @Tags 存储卷
+// @Tags Volumes
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -229,7 +229,7 @@ func (h *VolumeHandler) ListVolumes(c *gin.Context) {
 // UpdateVolume godoc
 // @Summary 更新存储卷
 // @Description 更新存储卷的配置信息
-// @Tags 存储卷
+// @Tags Volumes
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -288,7 +288,7 @@ func (h *VolumeHandler) UpdateVolume(c *gin.Context) {
 // DeleteVolume godoc
 // @Summary 删除存储卷
 // @Description 删除指定的存储卷
-// @Tags 存储卷
+// @Tags Volumes
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -333,7 +333,7 @@ func (h *VolumeHandler) DeleteVolume(c *gin.Context) {
 // SyncVolumeStatus godoc
 // @Summary 同步存储卷状态
 // @Description 从Kubernetes同步存储卷的实际状态
-// @Tags 存储卷
+// @Tags Volumes
 // @Accept json
 // @Produce json
 // @Security BearerAuth

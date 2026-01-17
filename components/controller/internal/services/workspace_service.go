@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
+	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
 	"github.com/google/uuid"
@@ -14,11 +15,12 @@ import (
 
 // WorkspaceService handles workspace business logic
 type WorkspaceService struct {
-	workspaceRepo  *repository.WorkspaceRepository
-	templateRepo   *repository.TemplateRepository
-	volumeRepo     *repository.VolumeRepository
-	eventPublisher *queue.EventPublisher
-	logger         *zap.Logger
+	workspaceRepo     *repository.WorkspaceRepository
+	templateRepo      *repository.TemplateRepository
+	volumeRepo        *repository.VolumeRepository
+	eventPublisher    *queue.EventPublisher
+	logger            *zap.Logger
+	permissionService *permission.ResourcePermissionService
 
 	// Flag to enable direct K8S operations (for backward compatibility during migration)
 	enableDirectK8S bool
@@ -31,13 +33,15 @@ func NewWorkspaceService(
 	volumeRepo *repository.VolumeRepository,
 	eventPublisher *queue.EventPublisher,
 	logger *zap.Logger,
+	permissionService *permission.ResourcePermissionService,
 ) *WorkspaceService {
 	return &WorkspaceService{
-		workspaceRepo:   workspaceRepo,
-		templateRepo:    templateRepo,
-		volumeRepo:      volumeRepo,
-		eventPublisher:  eventPublisher,
-		logger:          logger,
+		workspaceRepo:     workspaceRepo,
+		templateRepo:      templateRepo,
+		volumeRepo:        volumeRepo,
+		eventPublisher:    eventPublisher,
+		logger:            logger,
+		permissionService: permissionService,
 		enableDirectK8S: false, // Disable direct K8S operations by default
 	}
 }
@@ -102,6 +106,27 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req *models.Crea
 	err = s.workspaceRepo.Create(ctx, workspace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Grant ownership permissions automatically (if permission service is available)
+	if s.permissionService != nil {
+		// Determine the actual user who created this workspace
+		var creatorUserID int64
+		if req.OwnerType == models.OwnerTypeUser {
+			creatorUserID = req.OwnerID
+		} else {
+			// For organization workspaces, the CreatedBy field should be set by the handler
+			// For now, we'll grant ownership to the OwnerID (which is the org)
+			// TODO: Track actual creator separately and grant them permissions
+			creatorUserID = req.OwnerID
+		}
+
+		if err := s.permissionService.GrantResourceOwnership(ctx, creatorUserID, "workspace", workspace.ID); err != nil {
+			s.logger.Warn("Failed to grant workspace ownership permissions",
+				zap.Int64("workspace_id", workspace.ID),
+				zap.Int64("creator_id", creatorUserID),
+				zap.Error(err))
+		}
 	}
 
 	// Get attached volumes

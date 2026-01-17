@@ -14,20 +14,22 @@ import (
 
 // UserHandler handles user-related HTTP requests
 type UserHandler struct {
-	userService *services.UserService
+	userService        *services.UserService
+	enableRegistration bool
 }
 
 // NewUserHandler creates a new user handler
-func NewUserHandler(userService *services.UserService) *UserHandler {
+func NewUserHandler(userService *services.UserService, enableRegistration bool) *UserHandler {
 	return &UserHandler{
-		userService: userService,
+		userService:        userService,
+		enableRegistration: enableRegistration,
 	}
 }
 
 // Login godoc
 // @Summary 用户登录
 // @Description 使用用户名和密码进行登录认证
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body models.LoginRequest true "登录请求"
@@ -75,7 +77,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 // Register godoc
 // @Summary 用户注册
 // @Description 创建新的用户账号
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body models.CreateUserRequest true "注册请求"
@@ -83,6 +85,17 @@ func (h *UserHandler) Login(c *gin.Context) {
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Router /auth/register [post]
 func (h *UserHandler) Register(c *gin.Context) {
+	if !h.enableRegistration {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "REGISTRATION_DISABLED",
+				Message: "User registration is disabled",
+			},
+		})
+		return
+	}
+
 	var req models.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
@@ -118,7 +131,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 // RefreshToken godoc
 // @Summary 刷新访问令牌
 // @Description 使用刷新令牌获取新的访问令牌和刷新令牌
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body models.RefreshTokenRequest true "刷新令牌请求"
@@ -162,7 +175,7 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 // Logout godoc
 // @Summary 用户登出
 // @Description 撤销用户的所有刷新令牌
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -194,7 +207,7 @@ func (h *UserHandler) Logout(c *gin.Context) {
 // GetProfile godoc
 // @Summary 获取当前用户信息
 // @Description 获取当前登录用户的详细信息
-// @Tags 用户
+// @Tags Users
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -225,7 +238,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 // GetUser godoc
 // @Summary 获取用户信息
 // @Description 根据ID获取用户的详细信息
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -270,7 +283,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 // ListUsers godoc
 // @Summary 列出用户
 // @Description 获取所有用户列表（仅管理员）
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -330,7 +343,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 // CreateUser godoc
 // @Summary 创建用户
 // @Description 创建新的用户账号（仅管理员）
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -376,7 +389,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // UpdateProfile godoc
 // @Summary 更新个人资料
 // @Description 更新当前用户的个人资料
-// @Tags 用户
+// @Tags Users
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -423,7 +436,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 // UpdateUser godoc
 // @Summary 更新用户
 // @Description 更新指定用户的信息（仅管理员）
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -487,7 +500,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 // DeleteUser godoc
 // @Summary 删除用户
 // @Description 删除指定的用户
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -533,7 +546,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 // ChangePassword godoc
 // @Summary 修改密码
 // @Description 修改当前用户的密码
-// @Tags 用户
+// @Tags Users
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -580,16 +593,17 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 // CheckUserExists godoc
 // @Summary 检查用户是否存在
 // @Description 通过用户名检查用户是否存在,仅限 power_user 及以上角色
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param username query string true "用户名"
 // @Success 200 {object} models.APIResponse{data=models.CheckUserExistsResponse} "检查成功"
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 401 {object} models.APIResponse "未授权"
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Security Bearer
-// @Router /api/v1/users/check [get]
+// @Router /users/check [get]
 func (h *UserHandler) CheckUserExists(c *gin.Context) {
 	username := c.Query("username")
 	if username == "" {
@@ -628,9 +642,10 @@ func (h *UserHandler) CheckUserExists(c *gin.Context) {
 // SearchUsers godoc
 // @Summary 搜索用户
 // @Description 根据查询字符串搜索用户,仅限 admin 及以上角色
-// @Tags 用户管理
+// @Tags User Management
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param query query string true "搜索查询字符串(用户名或邮箱)"
 // @Param page query int false "页码" default(1)
 // @Param page_size query int false "每页数量" default(10)
@@ -639,7 +654,7 @@ func (h *UserHandler) CheckUserExists(c *gin.Context) {
 // @Failure 401 {object} models.APIResponse "未授权"
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Security Bearer
-// @Router /api/v1/users/search [get]
+// @Router /users/search [get]
 func (h *UserHandler) SearchUsers(c *gin.Context) {
 	query := c.Query("query")
 	if query == "" {

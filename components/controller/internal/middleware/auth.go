@@ -198,11 +198,12 @@ func (m *JWTManager) RefreshAccessToken(ctx context.Context, refreshTokenString 
 		Role:     claims.Role,
 	}
 
+	// FIXME: Disabled revocation of old refresh token for now, as it causes issues with multiple concurrent refreshes
 	// Revoke old refresh token
-	if err := m.RevokeRefreshToken(ctx, claims.UserID, claims.ID); err != nil {
-		// Log error but don't fail the operation
-		fmt.Printf("Warning: failed to revoke old refresh token: %v\n", err)
-	}
+	// if err := m.RevokeRefreshToken(ctx, claims.UserID, claims.ID); err != nil {
+	// 	// Log error but don't fail the operation
+	// 	fmt.Printf("Warning: failed to revoke old refresh token: %v\n", err)
+	// }
 
 	return m.GenerateTokenPair(ctx, user)
 }

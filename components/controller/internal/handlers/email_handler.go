@@ -23,7 +23,7 @@ func NewEmailHandler(emailService *services.EmailService) *EmailHandler {
 // VerifyEmail godoc
 // @Summary 验证邮箱
 // @Description 使用token验证用户邮箱
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param token query string true "验证token"
@@ -65,7 +65,7 @@ func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 // RequestPasswordReset godoc
 // @Summary 请求密码重置
 // @Description 发送密码重置邮件
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body object{email=string} true "密码重置请求"
@@ -112,7 +112,7 @@ func (h *EmailHandler) RequestPasswordReset(c *gin.Context) {
 // ResetPassword godoc
 // @Summary 重置密码
 // @Description 使用token重置用户密码
-// @Tags 认证
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body object{token=string,new_password=string} true "密码重置请求"
