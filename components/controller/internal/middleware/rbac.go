@@ -108,12 +108,19 @@ func RBACCheckEndpoint(permService *permission.PermissionService, resourceType s
 			resourceID = userIDParam
 		}
 
+		// Extract query parameters for permission check
+		queryParams := make(map[string]string)
+		if allParam := c.Query("all"); allParam != "" {
+			queryParams["all"] = allParam
+		}
+
 		// Check permission with permission service
 		allowed, err := permService.CheckPermission(c.Request.Context(), permission.CheckPermissionRequest{
 			UserID:       userID.(int64),
 			ResourceType: resourceType,
 			ResourceID:   resourceID,
 			Action:       action,
+			QueryParams:  queryParams,
 		})
 
 		if err != nil {

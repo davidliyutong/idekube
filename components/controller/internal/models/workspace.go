@@ -38,6 +38,7 @@ type Workspace struct {
 	CreatedBy         int64           `json:"created_by" db:"created_by"`
 	Labels            ResourceLabels  `json:"labels,omitempty" db:"labels"`
 	OrganizationID    *int64          `json:"organization_id,omitempty" db:"organization_id"`
+	IsShared          bool            `json:"is_shared" db:"is_shared"`
 	CreatedAt         time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at" db:"updated_at"`
 	StartedAt         *time.Time      `json:"started_at,omitempty" db:"started_at"`
@@ -85,6 +86,7 @@ type UpdateWorkspaceRequest struct {
 	StorageMB      *int             `json:"storage_mb,omitempty"`
 	TargetStatus   *WorkspaceStatus `json:"target_status,omitempty"`
 	TimeoutSeconds *int             `json:"timeout_seconds,omitempty"`
+	IsShared       *bool            `json:"is_shared,omitempty"`
 }
 
 // AttachVolumeRequest represents the request to attach a volume to a workspace

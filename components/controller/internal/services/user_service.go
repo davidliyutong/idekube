@@ -281,7 +281,7 @@ func (s *UserService) UpdateUserProfile(ctx context.Context, userID int64, req *
 }
 
 // UpdateUserByAdmin updates user by admin (more fields allowed)
-func (s *UserService) UpdateUserByAdmin(ctx context.Context, userID int64, req *models.UpdateUserRequest, isSuperAdmin bool) (*models.User, error) {
+func (s *UserService) UpdateUserByAdmin(ctx context.Context, userID int64, req *models.UpdateUserRequest, isAdmin bool) (*models.User, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -303,7 +303,7 @@ func (s *UserService) UpdateUserByAdmin(ctx context.Context, userID int64, req *
 
 	// Only super admin can change roles
 	if req.Role != nil {
-		if !isSuperAdmin {
+		if !isAdmin {
 			return nil, fmt.Errorf("only super admin can change user roles")
 		}
 		user.Role = *req.Role

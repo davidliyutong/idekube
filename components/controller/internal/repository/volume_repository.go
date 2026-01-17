@@ -188,3 +188,72 @@ func (r *VolumeRepository) UpdateLabels(ctx context.Context, id int64, labels mo
 		Where("id = ?", id).
 		Update("labels", labels).Error
 }
+
+// ListByOrganization lists volumes in a specific organization
+func (r *VolumeRepository) ListByOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Volume, int64, error) {
+	var volumes []*models.Volume
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Volume{}).
+		Where("organization_id = ? AND deleted_at IS NULL", orgID)
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get volumes with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&volumes).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return volumes, total, nil
+}
+
+// ListByOrganizationAll lists all volumes in organizations where user is owner/admin
+func (r *VolumeRepository) ListByOrganizationAll(ctx context.Context, userID int64, opts *models.ListOptions) ([]*models.Volume, int64, error) {
+	var volumes []*models.Volume
+	var total int64
+
+	// Get organizations where user is owner or admin
+	query := r.db.WithContext(ctx).Model(&models.Volume{}).
+		Joins("INNER JOIN organizations ON volumes.organization_id = organizations.id").
+		Joins("INNER JOIN organization_members ON organizations.id = organization_members.organization_id").
+		Where("organization_members.user_id = ? AND organization_members.role IN ? AND volumes.deleted_at IS NULL", userID, []string{"owner", "admin"})
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("volumes.name ILIKE ? OR volumes.display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get volumes with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("volumes.%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&volumes).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return volumes, total, nil
+}

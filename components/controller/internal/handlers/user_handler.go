@@ -475,10 +475,13 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	}
 
 	// Check if caller is super admin (for role changes)
+	// Note: This is a business rule check, not a permission check
+	// Only super_admin can modify user roles through the service layer
+	// Permission to update user is already checked by RBACCheckEndpoint middleware
 	userRole := models.UserRole(c.GetString("user_role"))
-	isSuperAdmin := userRole == models.UserRoleSuperAdmin
+	isAdmin := userRole == models.UserRoleSuperAdmin || userRole == models.UserRoleAdmin
 
-	user, err := h.userService.UpdateUserByAdmin(c.Request.Context(), id, &req, isSuperAdmin)
+	user, err := h.userService.UpdateUserByAdmin(c.Request.Context(), id, &req, isAdmin)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,

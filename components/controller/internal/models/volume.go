@@ -26,22 +26,23 @@ const (
 
 // Volume represents a persistent volume
 type Volume struct {
-	ID           int64            `json:"id" db:"id"`
-	UUID         uuid.UUID        `json:"uuid" db:"uuid"`
-	Name         string           `json:"name" db:"name"`
-	DisplayName  *string          `json:"display_name,omitempty" db:"display_name"`
-	Description  *string          `json:"description,omitempty" db:"description"`
-	OwnerType    OwnerType        `json:"owner_type" db:"owner_type"`
-	OwnerID      int64            `json:"owner_id" db:"owner_id"`
-	SizeMB       int              `json:"size_mb" db:"size_mb"`
-	StorageClass *string          `json:"storage_class,omitempty" db:"storage_class"`
-	AccessMode   VolumeAccessMode `json:"access_mode" db:"access_mode"`
-	PVCName      *string          `json:"pvc_name,omitempty" db:"pvc_name"`
-	Status       VolumeStatus     `json:"status" db:"status"`
-	Labels       ResourceLabels   `json:"labels,omitempty" db:"labels"`
-	CreatedAt    time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time        `json:"updated_at" db:"updated_at"`
-	DeletedAt    *time.Time       `json:"deleted_at,omitempty" db:"deleted_at"`
+	ID             int64            `json:"id" db:"id"`
+	UUID           uuid.UUID        `json:"uuid" db:"uuid"`
+	Name           string           `json:"name" db:"name"`
+	DisplayName    *string          `json:"display_name,omitempty" db:"display_name"`
+	Description    *string          `json:"description,omitempty" db:"description"`
+	OwnerType      OwnerType        `json:"owner_type" db:"owner_type"`
+	OwnerID        int64            `json:"owner_id" db:"owner_id"`
+	SizeMB         int              `json:"size_mb" db:"size_mb"`
+	StorageClass   *string          `json:"storage_class,omitempty" db:"storage_class"`
+	AccessMode     VolumeAccessMode `json:"access_mode" db:"access_mode"`
+	PVCName        *string          `json:"pvc_name,omitempty" db:"pvc_name"`
+	Status         VolumeStatus     `json:"status" db:"status"`
+	Labels         ResourceLabels   `json:"labels,omitempty" db:"labels"`
+	OrganizationID *int64           `json:"organization_id,omitempty" db:"organization_id"`
+	CreatedAt      time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at" db:"updated_at"`
+	DeletedAt      *time.Time       `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // CreateVolumeRequest represents the request to create a volume

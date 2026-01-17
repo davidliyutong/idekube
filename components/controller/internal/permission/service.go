@@ -22,10 +22,11 @@ func NewPermissionService(enforcer *opa.Enforcer, log *logger.Logger) *Permissio
 
 // CheckPermissionRequest describes a permission check input payload.
 type CheckPermissionRequest struct {
-	UserID       int64  `json:"user_id" example:"123" binding:"required"`
-	ResourceType string `json:"resource_type" example:"workspace" binding:"required"`
-	ResourceID   string `json:"resource_id" example:"ws-001"`
-	Action       string `json:"action" example:"read" binding:"required"`
+	UserID       int64             `json:"user_id" example:"123" binding:"required"`
+	ResourceType string            `json:"resource_type" example:"workspace" binding:"required"`
+	ResourceID   string            `json:"resource_id" example:"ws-001"`
+	Action       string            `json:"action" example:"read" binding:"required"`
+	QueryParams  map[string]string `json:"query_params,omitempty" example:"{\"all\":\"true\"}"`
 }
 
 // CheckPermission returns whether the given user can perform the action on the resource.
@@ -47,6 +48,21 @@ func (s *PermissionService) CheckPermission(ctx context.Context, req CheckPermis
 	// Handle wildcard explicitly - "*" means check generic resource type permission
 	if resourceID != "" && resourceID != "*" {
 		object = fmt.Sprintf("%s:%s", req.ResourceType, resourceID)
+	}
+
+	// Check if requesting 'all' resources with special query parameter
+	if req.QueryParams != nil && req.QueryParams["all"] == "true" {
+		// For 'all' queries, construct a special action like "{action}_all"
+		// This allows different actions (read, update, delete, etc.) to have separate _all permissions
+		allAction := fmt.Sprintf("%s_all", req.Action)
+		allowedAll, err := s.enforcer.Enforce(subject, object, allAction)
+		if err != nil {
+			return false, err
+		}
+		if !allowedAll {
+			s.log.Debugf("permission check sub=%s obj=%s act=%s (all=true) denied", subject, object, allAction)
+			return false, nil
+		}
 	}
 
 	allowed, err := s.enforcer.Enforce(subject, object, req.Action)

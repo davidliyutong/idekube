@@ -98,12 +98,12 @@ func (s *Server) SetupRoutes(
 			auth.POST("/login", userHandler.Login)
 			auth.POST("/refresh", userHandler.RefreshToken)
 			auth.POST("/register", userHandler.Register)
-			
+
 			// Email verification and password reset (public)
 			auth.GET("/verify-email", emailHandler.VerifyEmail)
 			auth.POST("/request-password-reset", emailHandler.RequestPasswordReset)
 			auth.POST("/reset-password", emailHandler.ResetPassword)
-			
+
 			// OIDC routes (public)
 			auth.GET("/oidc/:provider/login", oidcHandler.InitiateLogin)
 			auth.GET("/oidc/:provider/callback", oidcHandler.HandleCallback)

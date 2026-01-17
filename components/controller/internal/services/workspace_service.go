@@ -42,7 +42,7 @@ func NewWorkspaceService(
 		eventPublisher:    eventPublisher,
 		logger:            logger,
 		permissionService: permissionService,
-		enableDirectK8S: false, // Disable direct K8S operations by default
+		enableDirectK8S:   false, // Disable direct K8S operations by default
 	}
 }
 
@@ -179,6 +179,9 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, id int64, req *m
 	}
 	if req.Description != nil {
 		workspace.Description = req.Description
+	}
+	if req.IsShared != nil {
+		workspace.IsShared = *req.IsShared
 	}
 
 	// Handle resource changes

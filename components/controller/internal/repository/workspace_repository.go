@@ -251,3 +251,43 @@ func (r *WorkspaceRepository) UpdateLabels(ctx context.Context, id int64, labels
 		Where("id = ?", id).
 		Update("labels", labels).Error
 }
+
+// ListSharedInOrganization lists shared workspaces in a specific organization
+func (r *WorkspaceRepository) ListSharedInOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+	var workspaces []*models.Workspace
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Workspace{}).
+		Where("organization_id = ? AND is_shared = ? AND deleted_at IS NULL", orgID, true)
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get workspaces with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&workspaces).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return workspaces, total, nil
+}
+
+// UpdateIsShared updates the is_shared flag of a workspace
+func (r *WorkspaceRepository) UpdateIsShared(ctx context.Context, id int64, isShared bool) error {
+	return r.db.WithContext(ctx).Model(&models.Workspace{}).
+		Where("id = ?", id).
+		Update("is_shared", isShared).Error
+}

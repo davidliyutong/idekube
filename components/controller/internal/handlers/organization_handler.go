@@ -25,7 +25,7 @@ func NewOrganizationHandler(orgService *services.OrganizationService) *Organizat
 // CreateOrganization godoc
 // @Summary 创建组织
 // @Description 创建新的组织
-// @Tags Organization 
+// @Tags Organization
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -72,7 +72,7 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 // GetOrganization godoc
 // @Summary 获取组织详情
 // @Description 根据ID获取组织的详细信息
-// @Tags Organization 
+// @Tags Organization
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -138,7 +138,7 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 // ListUserOrganizations godoc
 // @Summary 列出用户的组织
 // @Description 获取当前用户所属的所有组织
-// @Tags Organization 
+// @Tags Organization
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -153,10 +153,8 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 func (h *OrganizationHandler) ListUserOrganizations(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
-	userRole := models.UserRole(c.GetString("user_role"))
-
-	// Check if admin wants to list all organizations
-	if (userRole == models.UserRoleAdmin || userRole == models.UserRoleSuperAdmin) && c.Query("all") == "true" {
+	// Check if requesting all organizations (permission already checked by RBAC middleware)
+	if c.Query("all") == "true" {
 		var opts models.ListOptions
 		if err := c.ShouldBindQuery(&opts); err != nil {
 			c.JSON(http.StatusBadRequest, models.APIResponse{
@@ -223,7 +221,7 @@ func (h *OrganizationHandler) ListUserOrganizations(c *gin.Context) {
 // UpdateOrganization godoc
 // @Summary 更新组织
 // @Description 更新组织信息
-// @Tags Organization 
+// @Tags Organization
 // @Accept json
 // @Produce json
 // @Security BearerAuth
@@ -298,7 +296,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 // DeleteOrganization godoc
 // @Summary 删除组织
 // @Description 删除指定的组织（仅所有者可操作）
-// @Tags Organization 
+// @Tags Organization
 // @Accept json
 // @Produce json
 // @Security BearerAuth

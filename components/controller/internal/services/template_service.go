@@ -46,6 +46,26 @@ func (s *TemplateService) CreateTemplate(ctx context.Context, userID int64, user
 		req.DefaultStorageMB = 10240
 	}
 
+	// Determine visibility
+	visibility := models.TemplateVisibilityPrivate
+	if req.Visibility != nil {
+		visibility = *req.Visibility
+	} else if req.IsPublic {
+		visibility = models.TemplateVisibilityPublic
+	}
+
+	// Validate organization visibility
+	if visibility == models.TemplateVisibilityOrganization {
+		if req.OrganizationID == nil {
+			return nil, fmt.Errorf("organization_id is required when visibility is organization")
+		}
+		// Verify user is member of the organization
+		member, _ := s.orgRepo.GetMember(ctx, *req.OrganizationID, userID)
+		if member == nil && userRole != models.UserRoleSuperAdmin && userRole != models.UserRoleAdmin {
+			return nil, fmt.Errorf("user is not a member of the specified organization")
+		}
+	}
+
 	template := &models.Template{
 		UUID:                 uuid.New(),
 		Name:                 req.Name,
@@ -54,7 +74,8 @@ func (s *TemplateService) CreateTemplate(ctx context.Context, userID int64, user
 		ImageRef:             req.ImageRef,
 		TemplateYAML:         req.TemplateYAML,
 		IconURL:              req.IconURL,
-		IsPublic:             req.IsPublic,
+		IsPublic:             req.IsPublic || visibility == models.TemplateVisibilityPublic,
+		Visibility:           visibility,
 		DefaultCPUMillicores: req.DefaultCPUMillicores,
 		DefaultMemoryMB:      req.DefaultMemoryMB,
 		DefaultStorageMB:     req.DefaultStorageMB,
@@ -62,13 +83,19 @@ func (s *TemplateService) CreateTemplate(ctx context.Context, userID int64, user
 		UpdatedAt:            time.Now(),
 	}
 
-	// System templates (super_admin only)
-	if userRole == models.UserRoleSuperAdmin && req.IsPublic {
+	// Determine owner type and ID based on visibility and role
+	switch {
+	case userRole == models.UserRoleSuperAdmin && visibility == models.TemplateVisibilityPublic:
 		// System template: owner_type and owner_id are NULL
 		template.OwnerType = nil
 		template.OwnerID = nil
-	} else {
-		// User/Org template
+	case visibility == models.TemplateVisibilityOrganization && req.OrganizationID != nil:
+		// Organization template
+		ownerType := string(models.OwnerTypeOrganization)
+		template.OwnerType = &ownerType
+		template.OwnerID = req.OrganizationID
+	default:
+		// User template (private or personal)
 		ownerType := string(models.OwnerTypeUser)
 		template.OwnerType = &ownerType
 		template.OwnerID = &userID
@@ -137,6 +164,15 @@ func (s *TemplateService) UpdateTemplate(ctx context.Context, id int64, req *mod
 	}
 	if req.IsPublic != nil {
 		template.IsPublic = *req.IsPublic
+		// Sync visibility with is_public for backward compatibility
+		if *req.IsPublic {
+			template.Visibility = models.TemplateVisibilityPublic
+		}
+	}
+	if req.Visibility != nil {
+		template.Visibility = *req.Visibility
+		// Sync is_public with visibility
+		template.IsPublic = (*req.Visibility == models.TemplateVisibilityPublic)
 	}
 	if req.DefaultCPUMillicores != nil {
 		template.DefaultCPUMillicores = *req.DefaultCPUMillicores

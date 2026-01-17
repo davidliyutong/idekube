@@ -51,24 +51,27 @@ func (s *VolumeService) CreateVolume(ctx context.Context, req *models.CreateVolu
 	}
 
 	// Add organization_id label if it's an org volume
+	var orgID *int64
 	if req.OwnerType == models.OwnerTypeOrganization {
+		orgID = &req.OwnerID
 		labels["organization_id"] = fmt.Sprintf("%d", req.OwnerID)
 	}
 
 	volume := &models.Volume{
-		UUID:         uuid.New(),
-		Name:         req.Name,
-		DisplayName:  req.DisplayName,
-		Description:  req.Description,
-		OwnerType:    req.OwnerType,
-		OwnerID:      req.OwnerID,
-		SizeMB:       req.SizeMB,
-		StorageClass: req.StorageClass,
-		AccessMode:   accessMode,
-		Status:       models.VolumeStatusPending,
-		Labels:       labels,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		UUID:           uuid.New(),
+		Name:           req.Name,
+		DisplayName:    req.DisplayName,
+		Description:    req.Description,
+		OwnerType:      req.OwnerType,
+		OwnerID:        req.OwnerID,
+		SizeMB:         req.SizeMB,
+		StorageClass:   req.StorageClass,
+		AccessMode:     accessMode,
+		Status:         models.VolumeStatusPending,
+		Labels:         labels,
+		OrganizationID: orgID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	// Create in database first

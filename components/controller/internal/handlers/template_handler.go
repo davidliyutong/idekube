@@ -165,40 +165,37 @@ func (h *TemplateHandler) ListTemplates(c *gin.Context) {
 		return
 	}
 
-	// Check if admin wants to list all templates
-	if userRole == models.UserRoleAdmin || userRole == models.UserRoleSuperAdmin {
-		listAll := c.Query("all") == "true"
-		if listAll {
-			templates, total, err := h.templateService.ListAllTemplates(c.Request.Context(), &opts)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, models.APIResponse{
-					Success: false,
-					Error: &models.APIError{
-						Code:    "INTERNAL_ERROR",
-						Message: "Failed to list templates",
-						Details: err.Error(),
-					},
-				})
-				return
-			}
-
-			totalPages := int(total) / opts.PageSize
-			if int(total)%opts.PageSize > 0 {
-				totalPages++
-			}
-
-			c.JSON(http.StatusOK, models.APIResponse{
-				Success: true,
-				Data: models.PaginatedResponse{
-					Items:      templates,
-					Total:      total,
-					Page:       opts.Page,
-					PageSize:   opts.PageSize,
-					TotalPages: totalPages,
+	// Check if requesting all templates (permission already checked by RBAC middleware)
+	if c.Query("all") == "true" {
+		templates, total, err := h.templateService.ListAllTemplates(c.Request.Context(), &opts)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Error: &models.APIError{
+					Code:    "INTERNAL_ERROR",
+					Message: "Failed to list templates",
+					Details: err.Error(),
 				},
 			})
 			return
 		}
+
+		totalPages := int(total) / opts.PageSize
+		if int(total)%opts.PageSize > 0 {
+			totalPages++
+		}
+
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data: models.PaginatedResponse{
+				Items:      templates,
+				Total:      total,
+				Page:       opts.Page,
+				PageSize:   opts.PageSize,
+				TotalPages: totalPages,
+			},
+		})
+		return
 	}
 
 	// Parse optional organization_id
@@ -285,40 +282,8 @@ func (h *TemplateHandler) UpdateTemplate(c *gin.Context) {
 		return
 	}
 
-	userID := middleware.MustGetUserID(c)
-	userRole := middleware.MustGetUserRole(c)
-
-	// Get template to check ownership
-	template, err := h.templateService.GetTemplate(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "NOT_FOUND",
-				Message: "Template not found",
-			},
-		})
-		return
-	}
-
-	// Check if user can modify this template
-	canModify := false
-	if userRole == models.UserRoleSuperAdmin {
-		canModify = true
-	} else if template.OwnerType != nil && *template.OwnerType == string(models.OwnerTypeUser) && *template.OwnerID == userID {
-		canModify = true
-	}
-
-	if !canModify {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "FORBIDDEN",
-				Message: "Insufficient permissions to modify this template",
-			},
-		})
-		return
-	}
+	// Note: Permission to update is already checked by RBACCheckEndpoint middleware
+	// This handler only needs to perform the update operation
 
 	var req models.UpdateTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -380,40 +345,8 @@ func (h *TemplateHandler) DeleteTemplate(c *gin.Context) {
 		return
 	}
 
-	userID := middleware.MustGetUserID(c)
-	userRole := middleware.MustGetUserRole(c)
-
-	// Get template to check ownership
-	template, err := h.templateService.GetTemplate(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "NOT_FOUND",
-				Message: "Template not found",
-			},
-		})
-		return
-	}
-
-	// Check if user can delete this template
-	canDelete := false
-	if userRole == models.UserRoleSuperAdmin {
-		canDelete = true
-	} else if template.OwnerType != nil && *template.OwnerType == string(models.OwnerTypeUser) && *template.OwnerID == userID {
-		canDelete = true
-	}
-
-	if !canDelete {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "FORBIDDEN",
-				Message: "Insufficient permissions to delete this template",
-			},
-		})
-		return
-	}
+	// Note: Permission to delete is already checked by RBACCheckEndpoint middleware
+	// This handler only needs to perform the delete operation
 
 	err = h.templateService.DeleteTemplate(c.Request.Context(), id)
 	if err != nil {

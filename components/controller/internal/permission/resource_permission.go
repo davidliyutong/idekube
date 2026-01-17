@@ -23,7 +23,7 @@ func (s *ResourcePermissionService) GrantResourceOwnership(ctx context.Context, 
 	// Create a special role for this resource instance
 	// Format: "role:owner:{resourceType}:{resourceID}"
 	ownerRole := fmt.Sprintf("role:owner:%s:%d", resourceType, resourceID)
-	
+
 	// Assign the owner role to the user
 	if err := s.permService.AssignRole(ctx, userID, ownerRole); err != nil {
 		return fmt.Errorf("failed to assign owner role: %w", err)
@@ -31,7 +31,7 @@ func (s *ResourcePermissionService) GrantResourceOwnership(ctx context.Context, 
 
 	// Add policies for this owner role to have full access
 	resourceObject := fmt.Sprintf("%s:%d", resourceType, resourceID)
-	
+
 	actions := []string{"read", "update", "delete", "manage"}
 	for _, action := range actions {
 		if err := s.permService.AddPolicy(ctx, ownerRole, resourceObject, action); err != nil {
@@ -65,7 +65,7 @@ func (s *ResourcePermissionService) GrantOrganizationMembership(ctx context.Cont
 
 	// Add appropriate policies
 	orgObject := fmt.Sprintf("organization:%d", orgID)
-	
+
 	var actions []string
 	if role == "admin" {
 		actions = []string{"read", "update", "manage_members"}
@@ -112,7 +112,7 @@ func (s *ResourcePermissionService) GrantOrganizationResourceAccess(ctx context.
 	// Create a role that grants access to all resources of a type within an org
 	// Format: "role:org_member:{orgID}:{resourceType}"
 	role := fmt.Sprintf("role:org_member:%d:%s", orgID, resourceType)
-	
+
 	// Assign the role
 	if err := s.permService.AssignRole(ctx, userID, role); err != nil {
 		return fmt.Errorf("failed to assign org resource role: %w", err)
@@ -121,7 +121,7 @@ func (s *ResourcePermissionService) GrantOrganizationResourceAccess(ctx context.
 	// Add policy to read resources in this organization
 	// Pattern: workspace:org:{orgID}:* means all workspaces in this org
 	orgResourcePattern := fmt.Sprintf("%s:org:%d:*", resourceType, orgID)
-	
+
 	if err := s.permService.AddPolicy(ctx, role, orgResourcePattern, "read"); err != nil {
 		return fmt.Errorf("failed to add org resource policy: %w", err)
 	}

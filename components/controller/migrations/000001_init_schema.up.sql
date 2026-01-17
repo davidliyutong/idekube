@@ -109,6 +109,8 @@ CREATE TABLE templates (
 CREATE INDEX idx_templates_name ON templates(name);
 CREATE INDEX idx_templates_is_public ON templates(is_public);
 CREATE INDEX idx_templates_owner ON templates(owner_type, owner_id);
+CREATE INDEX idx_templates_visibility ON templates(visibility);
+CREATE INDEX idx_templates_labels ON templates USING GIN (labels);
 
 -- Volumes table
 CREATE TABLE volumes (
@@ -125,6 +127,9 @@ CREATE TABLE volumes (
     pvc_name VARCHAR(255),
     status VARCHAR(50) NOT NULL DEFAULT 'pending',
     labels JSONB,
+    organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMP WITH TIME ZONE,
     UNIQUE(owner_type, owner_id, name)
 );
@@ -132,6 +137,8 @@ CREATE TABLE volumes (
 CREATE INDEX idx_volumes_owner ON volumes(owner_type, owner_id);
 CREATE INDEX idx_volumes_status ON volumes(status);
 CREATE INDEX idx_volumes_deleted_at ON volumes(deleted_at);
+CREATE INDEX idx_volumes_organization_id ON volumes(organization_id);
+CREATE INDEX idx_volumes_labels ON volumes USING GIN (labels);
 
 -- Workspaces table
 CREATE TABLE workspaces (
@@ -154,6 +161,9 @@ CREATE TABLE workspaces (
     created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     labels JSONB,
     organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+    is_shared BOOLEAN NOT NULL DEFAULT false,
+    accessed_at TIMESTAMP WITH TIME ZONE,
+    timeout_seconds INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     started_at TIMESTAMP WITH TIME ZONE,
@@ -166,6 +176,9 @@ CREATE INDEX idx_workspaces_status ON workspaces(current_status);
 CREATE INDEX idx_workspaces_template_id ON workspaces(template_id);
 CREATE INDEX idx_workspaces_created_by ON workspaces(created_by);
 CREATE INDEX idx_workspaces_deleted_at ON workspaces(deleted_at);
+CREATE INDEX idx_workspaces_organization_id ON workspaces(organization_id);
+CREATE INDEX idx_workspaces_is_shared ON workspaces(is_shared);
+CREATE INDEX idx_workspaces_labels ON workspaces USING GIN (labels);
 
 -- Workspace volumes table
 CREATE TABLE workspace_volumes (
@@ -353,6 +366,9 @@ CREATE TABLE IF NOT EXISTS opa_policies (
 CREATE INDEX IF NOT EXISTS idx_opa_policies_subject ON opa_policies(subject);
 CREATE INDEX IF NOT EXISTS idx_opa_policies_object ON opa_policies(object);
 CREATE INDEX IF NOT EXISTS idx_opa_policies_action ON opa_policies(action);
+-- Composite index for common queries
+CREATE INDEX IF NOT EXISTS idx_opa_policies_subject_object ON opa_policies(subject, object);
+CREATE INDEX IF NOT EXISTS idx_opa_policies_subject_object_action ON opa_policies(subject, object, action);
 
 -- Create OPA role bindings table
 CREATE TABLE IF NOT EXISTS opa_role_bindings (

@@ -232,7 +232,7 @@ func (s *EmailService) sendEmail(to, subject, body string) error {
 	m.SetBody("text/html", body)
 
 	d := gomail.NewDialer(s.smtpHost, s.smtpPort, s.smtpUser, s.smtpPass)
-	
+
 	// Configure TLS based on settings
 	// If useTLS is false, it will still use STARTTLS if the server supports it
 	// Setting SSL to true forces TLS from the start (implicit TLS, typically port 465)

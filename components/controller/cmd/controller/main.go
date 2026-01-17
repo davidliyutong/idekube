@@ -220,7 +220,7 @@ func runController(cmd *cobra.Command, args []string) error {
 	apiKeyService := services.NewAPIKeyService(apiKeyRepo)
 	webhookService := services.NewWebhookService(webhookRepo)
 	oidcService := services.NewOIDCService(oidcProviderRepo, userRepo, oauthSessionRepo)
-	
+
 	// EmailService with SMTP configuration
 	emailService := services.NewEmailService(
 		userRepo,

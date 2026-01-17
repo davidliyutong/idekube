@@ -39,27 +39,30 @@ type Template struct {
 
 // CreateTemplateRequest represents the request to create a template
 type CreateTemplateRequest struct {
-	Name                 string  `json:"name" binding:"required,min=3,max=255"`
-	DisplayName          *string `json:"display_name,omitempty"`
-	Description          *string `json:"description,omitempty"`
-	ImageRef             string  `json:"image_ref" binding:"required"`
-	TemplateYAML         string  `json:"template_yaml" binding:"required"`
-	IconURL              *string `json:"icon_url,omitempty"`
-	IsPublic             bool    `json:"is_public,omitempty"`
-	DefaultCPUMillicores int     `json:"default_cpu_millicores,omitempty"`
-	DefaultMemoryMB      int     `json:"default_memory_mb,omitempty"`
-	DefaultStorageMB     int     `json:"default_storage_mb,omitempty"`
+	Name                 string              `json:"name" binding:"required,min=3,max=255"`
+	DisplayName          *string             `json:"display_name,omitempty"`
+	Description          *string             `json:"description,omitempty"`
+	ImageRef             string              `json:"image_ref" binding:"required"`
+	TemplateYAML         string              `json:"template_yaml" binding:"required"`
+	IconURL              *string             `json:"icon_url,omitempty"`
+	IsPublic             bool                `json:"is_public,omitempty"`
+	Visibility           *TemplateVisibility `json:"visibility,omitempty"`      // public, organization, private
+	OrganizationID       *int64              `json:"organization_id,omitempty"` // Required when visibility is organization
+	DefaultCPUMillicores int                 `json:"default_cpu_millicores,omitempty"`
+	DefaultMemoryMB      int                 `json:"default_memory_mb,omitempty"`
+	DefaultStorageMB     int                 `json:"default_storage_mb,omitempty"`
 }
 
 // UpdateTemplateRequest represents the request to update a template
 type UpdateTemplateRequest struct {
-	DisplayName          *string `json:"display_name,omitempty"`
-	Description          *string `json:"description,omitempty"`
-	ImageRef             *string `json:"image_ref,omitempty"`
-	TemplateYAML         *string `json:"template_yaml,omitempty"`
-	IconURL              *string `json:"icon_url,omitempty"`
-	IsPublic             *bool   `json:"is_public,omitempty"`
-	DefaultCPUMillicores *int    `json:"default_cpu_millicores,omitempty"`
-	DefaultMemoryMB      *int    `json:"default_memory_mb,omitempty"`
-	DefaultStorageMB     *int    `json:"default_storage_mb,omitempty"`
+	DisplayName          *string             `json:"display_name,omitempty"`
+	Description          *string             `json:"description,omitempty"`
+	ImageRef             *string             `json:"image_ref,omitempty"`
+	TemplateYAML         *string             `json:"template_yaml,omitempty"`
+	IconURL              *string             `json:"icon_url,omitempty"`
+	IsPublic             *bool               `json:"is_public,omitempty"`
+	Visibility           *TemplateVisibility `json:"visibility,omitempty"` // public, organization, private
+	DefaultCPUMillicores *int                `json:"default_cpu_millicores,omitempty"`
+	DefaultMemoryMB      *int                `json:"default_memory_mb,omitempty"`
+	DefaultStorageMB     *int                `json:"default_storage_mb,omitempty"`
 }
