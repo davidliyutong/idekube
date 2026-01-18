@@ -61,10 +61,10 @@ func (r *WorkspaceRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ListByOwner lists workspaces owned by a specific owner (excludes soft deleted)
-func (r *WorkspaceRepository) ListByOwner(ctx context.Context, ownerType models.OwnerType, ownerID int64) ([]*models.Workspace, error) {
+// ListByUser lists workspaces owned by a specific user (excludes soft deleted)
+func (r *WorkspaceRepository) ListByUser(ctx context.Context, userID int64) ([]*models.Workspace, error) {
 	var workspaces []*models.Workspace
-	err := r.db.WithContext(ctx).Where("owner_type = ? AND owner_id = ? AND deleted_at IS NULL", ownerType, ownerID).
+	err := r.db.WithContext(ctx).Where("user_id = ? AND deleted_at IS NULL", userID).
 		Order("created_at DESC").
 		Find(&workspaces).Error
 	return workspaces, err
@@ -96,7 +96,7 @@ func (r *WorkspaceRepository) ListVolumes(ctx context.Context, workspaceID int64
 }
 
 // UpdateStatus updates workspace status
-func (r *WorkspaceRepository) UpdateStatus(ctx context.Context, id int64, currentStatus, targetStatus models.WorkspaceStatus) error {
+func (r *WorkspaceRepository) UpdateStatus(ctx context.Context, id int64, currentStatus, targetStatus string) error {
 	return r.db.WithContext(ctx).Model(&models.Workspace{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -110,12 +110,12 @@ func (r *WorkspaceRepository) ListAll(ctx context.Context, opts *models.ListOpti
 	var workspaces []*models.Workspace
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Workspace{})
+	query := r.db.WithContext(ctx).Model(&models.Workspace{}).Where("deleted_at IS NULL")
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -146,12 +146,12 @@ func (r *WorkspaceRepository) ListByOrganizationAll(ctx context.Context, userID 
 	query := r.db.WithContext(ctx).Model(&models.Workspace{}).
 		Joins("INNER JOIN organizations ON workspaces.organization_id = organizations.id").
 		Joins("INNER JOIN organization_members ON organizations.id = organization_members.organization_id").
-		Where("organization_members.user_id = ? AND organization_members.role IN ?", userID, []string{"owner", "admin"})
+		Where("organization_members.user_id = ? AND organization_members.role IN ? AND workspaces.deleted_at IS NULL", userID, []string{"owner", "admin"})
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("workspaces.name ILIKE ? OR workspaces.display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("workspaces.identifier ILIKE ? OR workspaces.display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -180,13 +180,13 @@ func (r *WorkspaceRepository) ListAccessibleByUser(ctx context.Context, userID i
 
 	// Workspaces owned by user OR in organizations where user is a member
 	query := r.db.WithContext(ctx).Model(&models.Workspace{}).
-		Where("(owner_type = ? AND owner_id = ?)", models.OwnerTypeUser, userID).
-		Or("organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)", userID)
+		Where("(user_id = ? AND deleted_at IS NULL)", userID).
+		Or("organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?) AND deleted_at IS NULL", userID)
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -213,7 +213,7 @@ func (r *WorkspaceRepository) ListByLabel(ctx context.Context, labels map[string
 	var workspaces []*models.Workspace
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Workspace{})
+	query := r.db.WithContext(ctx).Model(&models.Workspace{}).Where("deleted_at IS NULL")
 
 	// Apply label filters
 	for key, value := range labels {
@@ -223,7 +223,7 @@ func (r *WorkspaceRepository) ListByLabel(ctx context.Context, labels map[string
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -252,18 +252,18 @@ func (r *WorkspaceRepository) UpdateLabels(ctx context.Context, id int64, labels
 		Update("labels", labels).Error
 }
 
-// ListSharedInOrganization lists shared workspaces in a specific organization
-func (r *WorkspaceRepository) ListSharedInOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+// ListPublicInOrganization lists public workspaces in a specific organization
+func (r *WorkspaceRepository) ListPublicInOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
 	var workspaces []*models.Workspace
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.Workspace{}).
-		Where("organization_id = ? AND is_shared = ? AND deleted_at IS NULL", orgID, true)
+		Where("organization_id = ? AND is_public = ? AND deleted_at IS NULL", orgID, true)
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -285,9 +285,42 @@ func (r *WorkspaceRepository) ListSharedInOrganization(ctx context.Context, orgI
 	return workspaces, total, nil
 }
 
-// UpdateIsShared updates the is_shared flag of a workspace
-func (r *WorkspaceRepository) UpdateIsShared(ctx context.Context, id int64, isShared bool) error {
+// UpdateIsPublic updates the is_public flag of a workspace
+func (r *WorkspaceRepository) UpdateIsPublic(ctx context.Context, id int64, isPublic bool) error {
 	return r.db.WithContext(ctx).Model(&models.Workspace{}).
 		Where("id = ?", id).
-		Update("is_shared", isShared).Error
+		Update("is_public", isPublic).Error
+}
+
+// ListByOrganization lists workspaces in a specific organization
+func (r *WorkspaceRepository) ListByOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+	var workspaces []*models.Workspace
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Workspace{}).
+		Where("organization_id = ? AND deleted_at IS NULL", orgID)
+
+	// Apply search filter
+	if opts.Search != "" {
+		searchPattern := "%" + opts.Search + "%"
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Count total
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get workspaces with pagination
+	offset := (opts.Page - 1) * opts.PageSize
+	err := query.Order(fmt.Sprintf("%s %s", opts.SortBy, opts.SortOrder)).
+		Limit(opts.PageSize).
+		Offset(offset).
+		Find(&workspaces).Error
+
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return workspaces, total, nil
 }

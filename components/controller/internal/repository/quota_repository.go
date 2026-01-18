@@ -17,11 +17,16 @@ func NewQuotaRepository(db *gorm.DB) *QuotaRepository {
 	return &QuotaRepository{db: db}
 }
 
-// GetByOwner retrieves a quota by owner type and ID
-func (r *QuotaRepository) GetByOwner(ctx context.Context, ownerType models.OwnerType, ownerID int64) (*models.Quota, error) {
+// GetByOrganization retrieves a quota by organization ID
+func (r *QuotaRepository) GetByOrganization(ctx context.Context, organizationID int64) (*models.Quota, error) {
 	var quota models.Quota
-	err := r.db.WithContext(ctx).Where("owner_type = ? AND owner_id = ?", ownerType, ownerID).First(&quota).Error
+	err := r.db.WithContext(ctx).Where("organization_id = ?", organizationID).First(&quota).Error
 	return &quota, err
+}
+
+// GetByOrganizationID is an alias for GetByOrganization for backward compatibility
+func (r *QuotaRepository) GetByOrganizationID(ctx context.Context, organizationID int64) (*models.Quota, error) {
+	return r.GetByOrganization(ctx, organizationID)
 }
 
 // Create creates a new quota

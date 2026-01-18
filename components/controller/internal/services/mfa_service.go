@@ -35,7 +35,7 @@ func (s *MFAService) EnableMFA(ctx context.Context, userID int64) (*models.MFASe
 	}
 
 	// Get account name
-	accountName := user.Username
+	accountName := user.Identifier
 	if user.Email != nil {
 		accountName = *user.Email
 	}

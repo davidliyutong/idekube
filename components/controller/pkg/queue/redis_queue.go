@@ -185,7 +185,7 @@ func (p *EventPublisher) publish(ctx context.Context, stream string, event inter
 // PublishWorkspaceCreate publishes a workspace creation event
 func (p *EventPublisher) PublishWorkspaceCreate(ctx context.Context, workspace *models.Workspace, template *models.Template, volumes []*models.Volume) error {
 	event := NewWorkspaceEvent(EventTypeWorkspaceCreate, workspace, template, volumes)
-	event.UserID = workspace.OwnerID
+	event.UserID = workspace.CreatedBy
 
 	if err := p.publish(ctx, StreamHousekeeperWorkspace, event); err != nil {
 		p.logger.Error("Failed to publish workspace create event",
@@ -196,7 +196,7 @@ func (p *EventPublisher) PublishWorkspaceCreate(ctx context.Context, workspace *
 
 	p.logger.Info("Published workspace create event",
 		zap.Int64("workspace_id", workspace.ID),
-		zap.String("name", workspace.Name))
+		zap.String("name", workspace.Identifier))
 
 	return nil
 }
@@ -204,7 +204,7 @@ func (p *EventPublisher) PublishWorkspaceCreate(ctx context.Context, workspace *
 // PublishWorkspaceUpdate publishes a workspace update event
 func (p *EventPublisher) PublishWorkspaceUpdate(ctx context.Context, workspace *models.Workspace, template *models.Template, volumes []*models.Volume, reason string) error {
 	event := NewWorkspaceEvent(EventTypeWorkspaceUpdate, workspace, template, volumes)
-	event.UserID = workspace.OwnerID
+	event.UserID = workspace.CreatedBy
 	event.Reason = reason
 
 	if err := p.publish(ctx, StreamHousekeeperWorkspace, event); err != nil {
@@ -246,7 +246,7 @@ func (p *EventPublisher) PublishWorkspaceDelete(ctx context.Context, workspaceID
 // PublishWorkspaceStart publishes a workspace start event
 func (p *EventPublisher) PublishWorkspaceStart(ctx context.Context, workspace *models.Workspace, template *models.Template, volumes []*models.Volume) error {
 	event := NewWorkspaceEvent(EventTypeWorkspaceStart, workspace, template, volumes)
-	event.UserID = workspace.OwnerID
+	event.UserID = workspace.CreatedBy
 
 	if err := p.publish(ctx, StreamHousekeeperWorkspace, event); err != nil {
 		p.logger.Error("Failed to publish workspace start event",
@@ -268,7 +268,7 @@ func (p *EventPublisher) PublishWorkspaceStop(ctx context.Context, workspace *mo
 		WorkspaceID: workspace.ID,
 		Workspace:   workspace,
 		Timestamp:   time.Now(),
-		UserID:      workspace.OwnerID,
+		UserID:      workspace.CreatedBy,
 	}
 
 	if err := p.publish(ctx, StreamHousekeeperWorkspace, event); err != nil {
@@ -289,6 +289,8 @@ func (p *EventPublisher) PublishWorkspaceStop(ctx context.Context, workspace *mo
 // PublishVolumeCreate publishes a volume creation event
 func (p *EventPublisher) PublishVolumeCreate(ctx context.Context, volume *models.Volume) error {
 	event := NewVolumeEvent(EventTypeVolumeCreate, volume)
+	// Note: OwnerID is now Organization ID, not User ID
+	// Ensure UserID is set so the housekeeper can track who initiated the creation
 	event.UserID = volume.OwnerID
 
 	if err := p.publish(ctx, StreamHousekeeperVolume, event); err != nil {
@@ -300,7 +302,7 @@ func (p *EventPublisher) PublishVolumeCreate(ctx context.Context, volume *models
 
 	p.logger.Info("Published volume create event",
 		zap.Int64("volume_id", volume.ID),
-		zap.String("name", volume.Name))
+		zap.String("name", volume.Identifier))
 
 	return nil
 }
@@ -330,7 +332,8 @@ func (p *EventPublisher) PublishVolumeDelete(ctx context.Context, volumeID int64
 // PublishVolumeResize publishes a volume resize event
 func (p *EventPublisher) PublishVolumeResize(ctx context.Context, volume *models.Volume, oldSize, newSize int64) error {
 	event := NewVolumeEvent(EventTypeVolumeResize, volume)
-	event.UserID = volume.OwnerID
+	// Note: OwnerID is now Organization ID, not User ID
+	// event.UserID should be set by the caller if needed
 
 	if err := p.publish(ctx, StreamHousekeeperVolume, event); err != nil {
 		p.logger.Error("Failed to publish volume resize event",

@@ -30,10 +30,6 @@
                   <va-icon name="person" class="mr-2" />
                   Profile
                 </va-list-item>
-                <va-list-item @click="goToAPIKeys">
-                  <va-icon name="key" class="mr-2" />
-                  API Keys
-                </va-list-item>
                 <va-list-separator />
                 <va-list-item @click="handleLogout">
                   <va-icon name="logout" class="mr-2" />
@@ -125,7 +121,6 @@ const allMenuItems: MenuItem[] = [
   { name: 'organizations', title: 'Organizations', icon: 'business' },
   { name: 'users', title: 'Users', icon: 'people', adminOnly: true },
   { name: 'settings', title: 'Settings', icon: 'settings', adminOnly: true },
-  { name: 'webhooks', title: 'Webhooks', icon: 'webhook', adminOnly: true },
 ]
 
 const menuItems = computed(() => {
@@ -146,10 +141,6 @@ function isActiveRoute(name: string): boolean {
 
 function goToProfile() {
   router.push({ name: 'profile' })
-}
-
-function goToAPIKeys() {
-  router.push({ name: 'api-keys' })
 }
 
 async function handleLogout() {

@@ -35,70 +35,45 @@ func (s *TemplateService) CreateTemplate(ctx context.Context, userID int64, user
 		return nil, fmt.Errorf("invalid template YAML: %w", err)
 	}
 
-	// Set default resources if not provided
-	if req.DefaultCPUMillicores == 0 {
-		req.DefaultCPUMillicores = 1000
-	}
-	if req.DefaultMemoryMB == 0 {
-		req.DefaultMemoryMB = 2048
-	}
-	if req.DefaultStorageMB == 0 {
-		req.DefaultStorageMB = 10240
-	}
-
-	// Determine visibility
-	visibility := models.TemplateVisibilityPrivate
-	if req.Visibility != nil {
-		visibility = *req.Visibility
-	} else if req.IsPublic {
-		visibility = models.TemplateVisibilityPublic
-	}
-
-	// Validate organization visibility
-	if visibility == models.TemplateVisibilityOrganization {
-		if req.OrganizationID == nil {
-			return nil, fmt.Errorf("organization_id is required when visibility is organization")
-		}
-		// Verify user is member of the organization
-		member, _ := s.orgRepo.GetMember(ctx, *req.OrganizationID, userID)
-		if member == nil && userRole != models.UserRoleSuperAdmin && userRole != models.UserRoleAdmin {
-			return nil, fmt.Errorf("user is not a member of the specified organization")
-		}
-	}
-
+	now := time.Now()
 	template := &models.Template{
-		UUID:                 uuid.New(),
-		Name:                 req.Name,
-		DisplayName:          req.DisplayName,
-		Description:          req.Description,
-		ImageRef:             req.ImageRef,
-		TemplateYAML:         req.TemplateYAML,
-		IconURL:              req.IconURL,
-		IsPublic:             req.IsPublic || visibility == models.TemplateVisibilityPublic,
-		Visibility:           visibility,
-		DefaultCPUMillicores: req.DefaultCPUMillicores,
-		DefaultMemoryMB:      req.DefaultMemoryMB,
-		DefaultStorageMB:     req.DefaultStorageMB,
-		CreatedAt:            time.Now(),
-		UpdatedAt:            time.Now(),
+		Base: models.Base{
+			UUID:      uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+			Status:    models.TemplateStatusActive,
+			Labels:    req.Labels,
+		},
+		Profile: models.Profile{
+			Identifier:  req.Name,
+			DisplayName: req.DisplayName,
+			Description: req.Description,
+			IconURL:     req.IconURL,
+		},
+		ImageRef:     req.ImageRef,
+		TemplateYAML: req.TemplateYAML,
+		IsPublic:     req.IsPublic,
+		DefaultQuota: models.QuotaLimits{
+			CPUMillicores:  req.CPUMillicores,
+			MemoryMB:       req.MemoryMB,
+			StorageMB:      req.StorageMB,
+			GPU:            req.GPU,
+			TimeoutSeconds: req.TimeoutSeconds,
+		},
 	}
 
-	// Determine owner type and ID based on visibility and role
-	switch {
-	case userRole == models.UserRoleSuperAdmin && visibility == models.TemplateVisibilityPublic:
-		// System template: owner_type and owner_id are NULL
-		template.OwnerType = nil
-		template.OwnerID = nil
-	case visibility == models.TemplateVisibilityOrganization && req.OrganizationID != nil:
-		// Organization template
-		ownerType := string(models.OwnerTypeOrganization)
-		template.OwnerType = &ownerType
-		template.OwnerID = req.OrganizationID
-	default:
-		// User template (private or personal)
-		ownerType := string(models.OwnerTypeUser)
-		template.OwnerType = &ownerType
-		template.OwnerID = &userID
+	// Set default resources if not provided
+	if template.DefaultQuota.CPUMillicores == nil {
+		defaultCPU := 1000
+		template.DefaultQuota.CPUMillicores = &defaultCPU
+	}
+	if template.DefaultQuota.MemoryMB == nil {
+		defaultMem := 2048
+		template.DefaultQuota.MemoryMB = &defaultMem
+	}
+	if template.DefaultQuota.StorageMB == nil {
+		defaultStorage := 10240
+		template.DefaultQuota.StorageMB = &defaultStorage
 	}
 
 	err := s.templateRepo.Create(ctx, template)
@@ -149,6 +124,9 @@ func (s *TemplateService) UpdateTemplate(ctx context.Context, id int64, req *mod
 	if req.Description != nil {
 		template.Description = req.Description
 	}
+	if req.IconURL != nil {
+		template.IconURL = req.IconURL
+	}
 	if req.ImageRef != nil {
 		template.ImageRef = *req.ImageRef
 	}
@@ -159,29 +137,26 @@ func (s *TemplateService) UpdateTemplate(ctx context.Context, id int64, req *mod
 		}
 		template.TemplateYAML = *req.TemplateYAML
 	}
-	if req.IconURL != nil {
-		template.IconURL = req.IconURL
-	}
 	if req.IsPublic != nil {
 		template.IsPublic = *req.IsPublic
-		// Sync visibility with is_public for backward compatibility
-		if *req.IsPublic {
-			template.Visibility = models.TemplateVisibilityPublic
-		}
 	}
-	if req.Visibility != nil {
-		template.Visibility = *req.Visibility
-		// Sync is_public with visibility
-		template.IsPublic = (*req.Visibility == models.TemplateVisibilityPublic)
+	if req.CPUMillicores != nil {
+		template.DefaultQuota.CPUMillicores = req.CPUMillicores
 	}
-	if req.DefaultCPUMillicores != nil {
-		template.DefaultCPUMillicores = *req.DefaultCPUMillicores
+	if req.MemoryMB != nil {
+		template.DefaultQuota.MemoryMB = req.MemoryMB
 	}
-	if req.DefaultMemoryMB != nil {
-		template.DefaultMemoryMB = *req.DefaultMemoryMB
+	if req.StorageMB != nil {
+		template.DefaultQuota.StorageMB = req.StorageMB
 	}
-	if req.DefaultStorageMB != nil {
-		template.DefaultStorageMB = *req.DefaultStorageMB
+	if req.GPU != nil {
+		template.DefaultQuota.GPU = req.GPU
+	}
+	if req.TimeoutSeconds != nil {
+		template.DefaultQuota.TimeoutSeconds = req.TimeoutSeconds
+	}
+	if req.Labels != nil {
+		template.Labels = req.Labels
 	}
 
 	err = s.templateRepo.Update(ctx, template)
@@ -209,20 +184,9 @@ func (s *TemplateService) CheckTemplateAccess(ctx context.Context, templateID, u
 		return true, nil
 	}
 
-	// System templates (owner_type = NULL) are public
-	if template.OwnerType == nil {
+	// Active templates are accessible to all authenticated users
+	if template.Status == models.TemplateStatusActive {
 		return true, nil
-	}
-
-	// Check if user owns the template
-	if *template.OwnerType == string(models.OwnerTypeUser) && *template.OwnerID == userID {
-		return true, nil
-	}
-
-	// Check if user is member of the organization that owns the template
-	if *template.OwnerType == string(models.OwnerTypeOrganization) {
-		member, _ := s.orgRepo.GetMember(ctx, *template.OwnerID, userID)
-		return member != nil, nil
 	}
 
 	return false, nil
@@ -252,7 +216,7 @@ func (s *TemplateService) ListTemplates(ctx context.Context, userID int64, userR
 		return s.templateRepo.ListAll(ctx, opts)
 
 	case models.UserRolePowerUser, models.UserRoleUser:
-		// Regular users see public templates, their own templates, and org templates
+		// Regular users see public templates and active templates
 		return s.templateRepo.ListAccessibleByUser(ctx, userID, orgIDs, opts)
 
 	default:
@@ -263,4 +227,179 @@ func (s *TemplateService) ListTemplates(ctx context.Context, userID int64, userR
 // ListAllTemplates lists all templates (admin only)
 func (s *TemplateService) ListAllTemplates(ctx context.Context, opts *models.ListOptions) ([]*models.Template, int64, error) {
 	return s.templateRepo.ListAll(ctx, opts)
+}
+
+// ============================================================================
+// Sub-resource APIs
+// ============================================================================
+
+// GetTemplateProfile returns the template's profile sub-resource
+func (s *TemplateService) GetTemplateProfile(ctx context.Context, templateID int64) (*models.TemplateProfileResponse, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.TemplateProfileResponse{
+		Identifier:  template.Identifier,
+		DisplayName: template.DisplayName,
+		IconURL:     template.IconURL,
+		Description: template.Description,
+	}, nil
+}
+
+// UpdateTemplateProfile updates the template's profile sub-resource
+func (s *TemplateService) UpdateTemplateProfile(ctx context.Context, templateID int64, req *models.UpdateTemplateProfileRequest) (*models.TemplateProfileResponse, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update profile fields
+	if req.DisplayName != nil {
+		template.DisplayName = req.DisplayName
+	}
+	if req.IconURL != nil {
+		template.IconURL = req.IconURL
+	}
+	if req.Description != nil {
+		template.Description = req.Description
+	}
+
+	err = s.templateRepo.Update(ctx, template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	return &models.TemplateProfileResponse{
+		Identifier:  template.Identifier,
+		DisplayName: template.DisplayName,
+		IconURL:     template.IconURL,
+		Description: template.Description,
+	}, nil
+}
+
+// GetTemplateQuota returns the template's default quota sub-resource
+func (s *TemplateService) GetTemplateQuota(ctx context.Context, templateID int64) (*models.TemplateQuotaResponse, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.TemplateQuotaResponse{
+		CPUMillicores:  template.DefaultQuota.CPUMillicores,
+		MemoryMB:       template.DefaultQuota.MemoryMB,
+		StorageMB:      template.DefaultQuota.StorageMB,
+		GPU:            template.DefaultQuota.GPU,
+		TimeoutSeconds: template.DefaultQuota.TimeoutSeconds,
+	}, nil
+}
+
+// UpdateTemplateQuota updates the template's default quota sub-resource
+func (s *TemplateService) UpdateTemplateQuota(ctx context.Context, templateID int64, req *models.UpdateTemplateQuotaRequest) (*models.TemplateQuotaResponse, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update quota fields
+	if req.CPUMillicores != nil {
+		template.DefaultQuota.CPUMillicores = req.CPUMillicores
+	}
+	if req.MemoryMB != nil {
+		template.DefaultQuota.MemoryMB = req.MemoryMB
+	}
+	if req.StorageMB != nil {
+		template.DefaultQuota.StorageMB = req.StorageMB
+	}
+	if req.GPU != nil {
+		template.DefaultQuota.GPU = req.GPU
+	}
+	if req.TimeoutSeconds != nil {
+		template.DefaultQuota.TimeoutSeconds = req.TimeoutSeconds
+	}
+
+	err = s.templateRepo.Update(ctx, template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update quota: %w", err)
+	}
+
+	return &models.TemplateQuotaResponse{
+		CPUMillicores:  template.DefaultQuota.CPUMillicores,
+		MemoryMB:       template.DefaultQuota.MemoryMB,
+		StorageMB:      template.DefaultQuota.StorageMB,
+		GPU:            template.DefaultQuota.GPU,
+		TimeoutSeconds: template.DefaultQuota.TimeoutSeconds,
+	}, nil
+}
+
+// UpdateTemplateIsPublic updates the template's is_public status
+func (s *TemplateService) UpdateTemplateIsPublic(ctx context.Context, templateID int64, req *models.UpdateTemplateIsPublicRequest) error {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return err
+	}
+
+	template.IsPublic = req.IsPublic
+
+	return s.templateRepo.Update(ctx, template)
+}
+
+// UpdateTemplateYAML updates the template's YAML
+func (s *TemplateService) UpdateTemplateYAML(ctx context.Context, templateID int64, req *models.UpdateTemplateYAMLRequest) error {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return err
+	}
+
+	// Validate YAML
+	if err := s.validateTemplateYAML(req.TemplateYAML); err != nil {
+		return fmt.Errorf("invalid template YAML: %w", err)
+	}
+
+	template.TemplateYAML = req.TemplateYAML
+
+	return s.templateRepo.Update(ctx, template)
+}
+
+// UpdateTemplateImageRef updates the template's image reference
+func (s *TemplateService) UpdateTemplateImageRef(ctx context.Context, templateID int64, req *models.UpdateTemplateImageRefRequest) error {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return err
+	}
+
+	template.ImageRef = req.ImageRef
+
+	return s.templateRepo.Update(ctx, template)
+}
+
+// GetTemplateImageRef gets the template's image reference
+func (s *TemplateService) GetTemplateImageRef(ctx context.Context, templateID int64) (string, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return "", err
+	}
+
+	return template.ImageRef, nil
+}
+
+// GetTemplateYAML gets the template's YAML content
+func (s *TemplateService) GetTemplateYAML(ctx context.Context, templateID int64) (string, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return "", err
+	}
+
+	return template.TemplateYAML, nil
+}
+
+// GetTemplateIsPublic gets the template's public status
+func (s *TemplateService) GetTemplateIsPublic(ctx context.Context, templateID int64) (bool, error) {
+	template, err := s.templateRepo.GetByID(ctx, templateID)
+	if err != nil {
+		return false, err
+	}
+
+	return template.IsPublic, nil
 }

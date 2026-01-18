@@ -1,68 +1,125 @@
 package models
 
 import (
-	"time"
-
-	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
-// TemplateVisibility represents template visibility level
-type TemplateVisibility string
-
+// TemplateStatus constants (for business logic validation, stored as Base.Status string)
 const (
-	TemplateVisibilityPublic       TemplateVisibility = "public"       // Everyone can see
-	TemplateVisibilityOrganization TemplateVisibility = "organization" // Organization members can see
-	TemplateVisibilityPrivate      TemplateVisibility = "private"      // Only owner can see
+	TemplateStatusActive   = "active"
+	TemplateStatusInactive = "inactive"
+	TemplateStatusArchived = "archived"
 )
 
 // Template represents a workspace template
+// Template is a system-level concept (removed OwnerType, OwnerID, Visibility)
+// Embeds Base (ID, UUID, CreatedAt, UpdatedAt, DeletedAt, Labels, Status, ExtraInfo)
+// Embeds Profile (Identifier as name, DisplayName, IconURL, Description)
 type Template struct {
-	ID                   int64              `json:"id" db:"id"`
-	UUID                 uuid.UUID          `json:"uuid" db:"uuid"`
-	Name                 string             `json:"name" db:"name"`
-	DisplayName          *string            `json:"display_name,omitempty" db:"display_name"`
-	Description          *string            `json:"description,omitempty" db:"description"`
-	ImageRef             string             `json:"image_ref" db:"image_ref"`
-	TemplateYAML         string             `json:"template_yaml" db:"template_yaml"`
-	IconURL              *string            `json:"icon_url,omitempty" db:"icon_url"`
-	IsPublic             bool               `json:"is_public" db:"is_public"`
-	OwnerType            *string            `json:"owner_type,omitempty" db:"owner_type"` // NULL for system templates
-	OwnerID              *int64             `json:"owner_id,omitempty" db:"owner_id"`     // NULL for system templates
-	DefaultCPUMillicores int                `json:"default_cpu_millicores" db:"default_cpu_millicores"`
-	DefaultMemoryMB      int                `json:"default_memory_mb" db:"default_memory_mb"`
-	DefaultStorageMB     int                `json:"default_storage_mb" db:"default_storage_mb"`
-	Labels               ResourceLabels     `json:"labels,omitempty" db:"labels"`
-	Visibility           TemplateVisibility `json:"visibility" db:"visibility"`
-	CreatedAt            time.Time          `json:"created_at" db:"created_at"`
-	UpdatedAt            time.Time          `json:"updated_at" db:"updated_at"`
+	Base                                   // Embedded Base fields
+	Profile      `gorm:"embedded"`         // Embedded Profile fields (Identifier serves as template name)
+	ImageRef     string                    `json:"image_ref" gorm:"type:varchar(500);not null"`
+	TemplateYAML string                    `json:"template_yaml" gorm:"type:text;not null"`
+	IsPublic     bool                      `json:"is_public" gorm:"default:false"`
+	DefaultQuota QuotaLimits               `gorm:"embedded;embeddedPrefix:default_"` // Default quota limits for workspaces created from this template
 }
+
+// TableName specifies the table name for Template
+func (Template) TableName() string {
+	return "templates"
+}
+
+// GetName returns the template name (alias for Identifier for backward compatibility)
+func (t *Template) GetName() string {
+	return t.Identifier
+}
+
+// SetName sets the template name (alias for Identifier for backward compatibility)
+func (t *Template) SetName(name string) {
+	t.Identifier = name
+}
+
+// ============================================================================
+// Request/Response Types
+// ============================================================================
 
 // CreateTemplateRequest represents the request to create a template
 type CreateTemplateRequest struct {
-	Name                 string              `json:"name" binding:"required,min=3,max=255"`
-	DisplayName          *string             `json:"display_name,omitempty"`
-	Description          *string             `json:"description,omitempty"`
-	ImageRef             string              `json:"image_ref" binding:"required"`
-	TemplateYAML         string              `json:"template_yaml" binding:"required"`
-	IconURL              *string             `json:"icon_url,omitempty"`
-	IsPublic             bool                `json:"is_public,omitempty"`
-	Visibility           *TemplateVisibility `json:"visibility,omitempty"`      // public, organization, private
-	OrganizationID       *int64              `json:"organization_id,omitempty"` // Required when visibility is organization
-	DefaultCPUMillicores int                 `json:"default_cpu_millicores,omitempty"`
-	DefaultMemoryMB      int                 `json:"default_memory_mb,omitempty"`
-	DefaultStorageMB     int                 `json:"default_storage_mb,omitempty"`
+	Name           string            `json:"name" binding:"required,min=3,max=255"`
+	DisplayName    *string           `json:"display_name,omitempty"`
+	Description    *string           `json:"description,omitempty"`
+	IconURL        *string           `json:"icon_url,omitempty"`
+	ImageRef       string            `json:"image_ref" binding:"required"`
+	TemplateYAML   string            `json:"template_yaml" binding:"required"`
+	IsPublic       bool              `json:"is_public,omitempty"`
+	CPUMillicores  *int              `json:"cpu_millicores,omitempty"`
+	MemoryMB       *int              `json:"memory_mb,omitempty"`
+	StorageMB      *int              `json:"storage_mb,omitempty"`
+	GPU            *int              `json:"gpu,omitempty"`
+	TimeoutSeconds *int              `json:"timeout_seconds,omitempty"`
+	Labels         datatypes.JSONMap `json:"labels,omitempty"`
 }
 
 // UpdateTemplateRequest represents the request to update a template
 type UpdateTemplateRequest struct {
-	DisplayName          *string             `json:"display_name,omitempty"`
-	Description          *string             `json:"description,omitempty"`
-	ImageRef             *string             `json:"image_ref,omitempty"`
-	TemplateYAML         *string             `json:"template_yaml,omitempty"`
-	IconURL              *string             `json:"icon_url,omitempty"`
-	IsPublic             *bool               `json:"is_public,omitempty"`
-	Visibility           *TemplateVisibility `json:"visibility,omitempty"` // public, organization, private
-	DefaultCPUMillicores *int                `json:"default_cpu_millicores,omitempty"`
-	DefaultMemoryMB      *int                `json:"default_memory_mb,omitempty"`
-	DefaultStorageMB     *int                `json:"default_storage_mb,omitempty"`
+	DisplayName    *string           `json:"display_name,omitempty"`
+	Description    *string           `json:"description,omitempty"`
+	IconURL        *string           `json:"icon_url,omitempty"`
+	ImageRef       *string           `json:"image_ref,omitempty"`
+	TemplateYAML   *string           `json:"template_yaml,omitempty"`
+	IsPublic       *bool             `json:"is_public,omitempty"`
+	CPUMillicores  *int              `json:"cpu_millicores,omitempty"`
+	MemoryMB       *int              `json:"memory_mb,omitempty"`
+	StorageMB      *int              `json:"storage_mb,omitempty"`
+	GPU            *int              `json:"gpu,omitempty"`
+	TimeoutSeconds *int              `json:"timeout_seconds,omitempty"`
+	Labels         datatypes.JSONMap `json:"labels,omitempty"`
+}
+
+// TemplateProfileResponse represents the template profile sub-resource response
+type TemplateProfileResponse struct {
+	Identifier  string  `json:"identifier"`
+	DisplayName *string `json:"display_name,omitempty"`
+	IconURL     *string `json:"icon_url,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+// UpdateTemplateProfileRequest represents the request to update template profile
+type UpdateTemplateProfileRequest struct {
+	DisplayName *string `json:"display_name,omitempty"`
+	IconURL     *string `json:"icon_url,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+// TemplateQuotaResponse represents the template default quota sub-resource response
+type TemplateQuotaResponse struct {
+	CPUMillicores  *int `json:"cpu_millicores,omitempty"`
+	MemoryMB       *int `json:"memory_mb,omitempty"`
+	StorageMB      *int `json:"storage_mb,omitempty"`
+	GPU            *int `json:"gpu,omitempty"`
+	TimeoutSeconds *int `json:"timeout_seconds,omitempty"`
+}
+
+// UpdateTemplateQuotaRequest represents the request to update template default quota
+type UpdateTemplateQuotaRequest struct {
+	CPUMillicores  *int `json:"cpu_millicores,omitempty"`
+	MemoryMB       *int `json:"memory_mb,omitempty"`
+	StorageMB      *int `json:"storage_mb,omitempty"`
+	GPU            *int `json:"gpu,omitempty"`
+	TimeoutSeconds *int `json:"timeout_seconds,omitempty"`
+}
+
+// UpdateTemplateIsPublicRequest represents the request to update template is_public status
+type UpdateTemplateIsPublicRequest struct {
+	IsPublic bool `json:"is_public"`
+}
+
+// UpdateTemplateYAMLRequest represents the request to update template YAML
+type UpdateTemplateYAMLRequest struct {
+	TemplateYAML string `json:"template_yaml" binding:"required"`
+}
+
+// UpdateTemplateImageRefRequest represents the request to update template image reference
+type UpdateTemplateImageRefRequest struct {
+	ImageRef string `json:"image_ref" binding:"required"`
 }

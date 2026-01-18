@@ -49,7 +49,7 @@ func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 		}
 	}
 
-	// Get user by username
+	// Get user by username (using Identifier field)
 	user, err := s.userRepo.GetByUsername(ctx, req.Username)
 	if err != nil {
 		// Record failed attempt
@@ -61,12 +61,12 @@ func (s *UserService) Login(ctx context.Context, req *models.LoginRequest) (*mod
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	// Check if user is active
+	// Check if user is active (using Base.Status)
 	if user.Status != models.UserStatusActive {
 		return nil, fmt.Errorf("user account is not active")
 	}
 
-	// Verify password
+	// Verify password (using Security.PasswordHash)
 	err = utils.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil {
 		// Record failed attempt
@@ -118,17 +118,24 @@ func (s *UserService) CreateUser(ctx context.Context, req *models.CreateUserRequ
 		role = models.UserRoleUser
 	}
 
+	now := time.Now()
 	user := &models.User{
-		UUID:         uuid.New(),
-		Username:     req.Username,
-		Email:        req.Email,
-		PasswordHash: hashedPassword,
-		Role:         role,
-		Status:       models.UserStatusActive,
-		DisplayName:  req.DisplayName,
-		ExtraInfo:    req.ExtraInfo,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Base: models.Base{
+			UUID:      uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+			Status:    models.UserStatusActive,
+			ExtraInfo: req.ExtraInfo,
+		},
+		Profile: models.Profile{
+			Identifier:  req.Username,
+			DisplayName: req.DisplayName,
+		},
+		Security: models.Security{
+			PasswordHash: hashedPassword,
+		},
+		Email: req.Email,
+		Role:  role,
 	}
 
 	err = s.userRepo.Create(ctx, user)
@@ -176,8 +183,8 @@ func (s *UserService) UpdateUser(ctx context.Context, id int64, req *models.Upda
 	if req.DisplayName != nil {
 		user.DisplayName = req.DisplayName
 	}
-	if req.AvatarURL != nil {
-		user.AvatarURL = req.AvatarURL
+	if req.IconURL != nil {
+		user.IconURL = req.IconURL
 	}
 	if req.Status != nil {
 		user.Status = *req.Status
@@ -187,6 +194,9 @@ func (s *UserService) UpdateUser(ctx context.Context, id int64, req *models.Upda
 	}
 	if req.ExtraInfo != nil {
 		user.ExtraInfo = req.ExtraInfo
+	}
+	if req.Labels != nil {
+		user.Labels = req.Labels
 	}
 
 	err = s.userRepo.Update(ctx, user)
@@ -213,7 +223,7 @@ func (s *UserService) DeleteUser(ctx context.Context, id int64) error {
 
 	// Publish delete event to HouseKeeper for K8S resource cleanup
 	if s.eventPublisher != nil {
-		if err := s.eventPublisher.PublishUserDelete(ctx, id, user.Username); err != nil {
+		if err := s.eventPublisher.PublishUserDelete(ctx, id, user.Identifier); err != nil {
 			// Log error but don't fail the operation
 			// HouseKeeper reconciler will handle cleanup eventually
 			zap.L().Error("Failed to publish user delete event",
@@ -265,11 +275,11 @@ func (s *UserService) UpdateUserProfile(ctx context.Context, userID int64, req *
 	if req.DisplayName != nil {
 		user.DisplayName = req.DisplayName
 	}
-	if req.Email != nil {
-		user.Email = req.Email
+	if req.IconURL != nil {
+		user.IconURL = req.IconURL
 	}
-	if req.AvatarURL != nil {
-		user.AvatarURL = req.AvatarURL
+	if req.Description != nil {
+		user.Description = req.Description
 	}
 
 	err = s.userRepo.Update(ctx, user)
@@ -294,8 +304,8 @@ func (s *UserService) UpdateUserByAdmin(ctx context.Context, userID int64, req *
 	if req.DisplayName != nil {
 		user.DisplayName = req.DisplayName
 	}
-	if req.AvatarURL != nil {
-		user.AvatarURL = req.AvatarURL
+	if req.IconURL != nil {
+		user.IconURL = req.IconURL
 	}
 	if req.Status != nil {
 		user.Status = *req.Status
@@ -311,6 +321,9 @@ func (s *UserService) UpdateUserByAdmin(ctx context.Context, userID int64, req *
 
 	if req.ExtraInfo != nil {
 		user.ExtraInfo = req.ExtraInfo
+	}
+	if req.Labels != nil {
+		user.Labels = req.Labels
 	}
 
 	err = s.userRepo.Update(ctx, user)
@@ -381,4 +394,150 @@ func (s *UserService) RevokeRefreshToken(ctx context.Context, userID int64, toke
 // RevokeAllRefreshTokens revokes all refresh tokens for a user
 func (s *UserService) RevokeAllRefreshTokens(ctx context.Context, userID int64) error {
 	return s.jwtManager.RevokeAllRefreshTokens(ctx, userID)
+}
+
+// ============================================================================
+// Sub-resource APIs
+// ============================================================================
+
+// GetUserProfile returns the user's profile sub-resource
+func (s *UserService) GetUserProfile(ctx context.Context, userID int64) (*models.UserProfileResponse, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.UserProfileResponse{
+		Identifier:  user.Identifier,
+		DisplayName: user.DisplayName,
+		IconURL:     user.IconURL,
+		Description: user.Description,
+	}, nil
+}
+
+// UpdateUserProfileSubResource updates the user's profile sub-resource
+func (s *UserService) UpdateUserProfileSubResource(ctx context.Context, userID int64, req *models.UpdateUserProfileRequest) (*models.UserProfileResponse, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update profile fields
+	if req.DisplayName != nil {
+		user.DisplayName = req.DisplayName
+	}
+	if req.IconURL != nil {
+		user.IconURL = req.IconURL
+	}
+	if req.Description != nil {
+		user.Description = req.Description
+	}
+
+	err = s.userRepo.Update(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	return &models.UserProfileResponse{
+		Identifier:  user.Identifier,
+		DisplayName: user.DisplayName,
+		IconURL:     user.IconURL,
+		Description: user.Description,
+	}, nil
+}
+
+// GetUserSecurity returns the user's security sub-resource (no sensitive data)
+func (s *UserService) GetUserSecurity(ctx context.Context, userID int64) (*models.UserSecurityResponse, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.UserSecurityResponse{
+		MFAEnabled:     user.MFAEnabled,
+		HasBackupCodes: len(user.MFABackupCodes) > 0,
+		LastLoginAt:    user.LastLoginAt,
+	}, nil
+}
+
+// UpdateUserSecurity updates the user's security sub-resource
+func (s *UserService) UpdateUserSecurity(ctx context.Context, userID int64, req *models.UpdateUserSecurityRequest) (*models.UserSecurityResponse, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update password if provided
+	if req.OldPassword != nil && req.NewPassword != nil {
+		// Verify old password
+		err = utils.VerifyPassword(*req.OldPassword, user.PasswordHash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid old password")
+		}
+
+		// Hash new password
+		hashedPassword, err := utils.HashPassword(*req.NewPassword)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", err)
+		}
+		user.PasswordHash = hashedPassword
+	}
+
+	// Update MFA enabled status if provided
+	if req.MFAEnabled != nil {
+		user.MFAEnabled = *req.MFAEnabled
+		// If disabling MFA, clear the secret and backup codes
+		if !*req.MFAEnabled {
+			user.MFASecret = nil
+			user.MFABackupCodes = nil
+		}
+	}
+
+	err = s.userRepo.Update(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update security settings: %w", err)
+	}
+
+	return &models.UserSecurityResponse{
+		MFAEnabled:     user.MFAEnabled,
+		HasBackupCodes: len(user.MFABackupCodes) > 0,
+		LastLoginAt:    user.LastLoginAt,
+	}, nil
+}
+
+// GetUserEmail returns the user's email address and verification status
+func (s *UserService) GetUserEmail(ctx context.Context, userID int64) (*models.UserEmailResponse, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.UserEmailResponse{
+		Email:           user.Email,
+		IsEmailVerified: user.IsEmailVerified,
+	}, nil
+}
+
+// UpdateUserEmail updates the user's email address and sets IsEmailVerified to false
+func (s *UserService) UpdateUserEmail(ctx context.Context, userID int64, req *models.UpdateUserEmailRequest) (*models.UserEmailResponse, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update email and reset verification status
+	user.Email = &req.Email
+	user.IsEmailVerified = false
+
+	err = s.userRepo.Update(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update email: %w", err)
+	}
+
+	// TODO: Publish event for email verification when needed
+
+	return &models.UserEmailResponse{
+		Email:           user.Email,
+		IsEmailVerified: user.IsEmailVerified,
+	}, nil
 }

@@ -89,7 +89,7 @@ func (s *EmailService) SendVerificationEmail(ctx context.Context, user *models.U
 	<p>If you didn't create an account, please ignore this email.</p>
 </body>
 </html>
-`, user.Username, verifyURL)
+`, user.Identifier, verifyURL)
 
 	emailAddr := ""
 	if user.Email != nil {
@@ -120,7 +120,7 @@ func (s *EmailService) VerifyEmail(ctx context.Context, token string) error {
 	}
 
 	// Update email verified status
-	user.EmailVerified = true
+	user.IsEmailVerified = true
 	err = s.userRepo.Update(ctx, user)
 	if err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
@@ -174,7 +174,7 @@ func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email string)
 	<p>If you didn't request this, please ignore this email.</p>
 </body>
 </html>
-`, user.Username, resetURL)
+`, user.Identifier, resetURL)
 
 	emailAddr := ""
 	if user.Email != nil {

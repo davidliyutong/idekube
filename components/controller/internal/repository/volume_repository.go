@@ -61,22 +61,22 @@ func (r *VolumeRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ListByOwner lists volumes owned by a specific owner (excludes soft deleted)
-func (r *VolumeRepository) ListByOwner(ctx context.Context, ownerType models.OwnerType, ownerID int64) ([]*models.Volume, error) {
+// ListByUser lists volumes owned by a specific user (excludes soft deleted)
+func (r *VolumeRepository) ListByUser(ctx context.Context, userID int64) ([]*models.Volume, error) {
 	var volumes []*models.Volume
-	err := r.db.WithContext(ctx).Where("owner_type = ? AND owner_id = ? AND deleted_at IS NULL", ownerType, ownerID).
+	err := r.db.WithContext(ctx).Where("user_id = ? AND deleted_at IS NULL", userID).
 		Order("created_at DESC").
 		Find(&volumes).Error
 	return volumes, err
 }
 
 // UpdateStatus updates volume status
-func (r *VolumeRepository) UpdateStatus(ctx context.Context, id int64, status models.VolumeStatus, pvcName *string) error {
+func (r *VolumeRepository) UpdateStatus(ctx context.Context, id int64, status string, pvcName *string) error {
 	return r.db.WithContext(ctx).Model(&models.Volume{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
-			"status":   status,
-			"pvc_name": pvcName,
+			"status":       status,
+			"k8s_pvc_name": pvcName,
 		}).Error
 }
 
@@ -85,12 +85,12 @@ func (r *VolumeRepository) ListAll(ctx context.Context, opts *models.ListOptions
 	var volumes []*models.Volume
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Volume{})
+	query := r.db.WithContext(ctx).Model(&models.Volume{}).Where("deleted_at IS NULL")
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -112,18 +112,18 @@ func (r *VolumeRepository) ListAll(ctx context.Context, opts *models.ListOptions
 	return volumes, total, nil
 }
 
-// ListAccessibleByUser lists volumes accessible by user (own volumes only for now)
+// ListAccessibleByUser lists volumes accessible by user (own volumes + org volumes)
 func (r *VolumeRepository) ListAccessibleByUser(ctx context.Context, userID int64, opts *models.ListOptions) ([]*models.Volume, int64, error) {
 	var volumes []*models.Volume
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.Volume{}).
-		Where("owner_type = ? AND owner_id = ?", models.OwnerTypeUser, userID)
+		Where("user_id = ? AND deleted_at IS NULL", userID)
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -150,7 +150,7 @@ func (r *VolumeRepository) ListByLabel(ctx context.Context, labels map[string]st
 	var volumes []*models.Volume
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Volume{})
+	query := r.db.WithContext(ctx).Model(&models.Volume{}).Where("deleted_at IS NULL")
 
 	// Apply label filters
 	for key, value := range labels {
@@ -160,7 +160,7 @@ func (r *VolumeRepository) ListByLabel(ctx context.Context, labels map[string]st
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -189,6 +189,33 @@ func (r *VolumeRepository) UpdateLabels(ctx context.Context, id int64, labels mo
 		Update("labels", labels).Error
 }
 
+// GetVolumeMounts gets all mounts (workspaces) where this volume is attached
+func (r *VolumeRepository) GetVolumeMounts(ctx context.Context, volumeID int64) ([]models.VolumeMount, error) {
+	var mounts []models.VolumeMount
+
+	// Query workspace_volumes join to get mount information
+	rows, err := r.db.WithContext(ctx).
+		Table("workspace_volumes").
+		Select("workspace_volumes.workspace_id, workspaces.identifier as workspace_name, workspace_volumes.mount_path").
+		Joins("LEFT JOIN workspaces ON workspace_volumes.workspace_id = workspaces.id").
+		Where("workspace_volumes.volume_id = ?", volumeID).
+		Rows()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query volume mounts: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var mount models.VolumeMount
+		if err := rows.Scan(&mount.WorkspaceID, &mount.WorkspaceName, &mount.MountPath); err != nil {
+			return nil, fmt.Errorf("failed to scan mount row: %w", err)
+		}
+		mounts = append(mounts, mount)
+	}
+
+	return mounts, nil
+}
+
 // ListByOrganization lists volumes in a specific organization
 func (r *VolumeRepository) ListByOrganization(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Volume, int64, error) {
 	var volumes []*models.Volume
@@ -200,7 +227,7 @@ func (r *VolumeRepository) ListByOrganization(ctx context.Context, orgID int64, 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -236,7 +263,7 @@ func (r *VolumeRepository) ListByOrganizationAll(ctx context.Context, userID int
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("volumes.name ILIKE ? OR volumes.display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("volumes.identifier ILIKE ? OR volumes.display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total

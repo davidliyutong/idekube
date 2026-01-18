@@ -42,9 +42,10 @@ func (s *WorkspaceTransferService) CreateTransfer(
 		return nil, fmt.Errorf("workspace not found: %w", err)
 	}
 
-	// Verify the requester is the owner
-	if workspace.OwnerType != models.OwnerTypeUser || workspace.OwnerID != fromUserID {
-		return nil, fmt.Errorf("only workspace owner can transfer ownership")
+	// Verify the requester is the creator of the workspace
+	// In the new model, workspaces belong to organizations, so we check CreatedBy
+	if workspace.CreatedBy != fromUserID {
+		return nil, fmt.Errorf("only workspace creator can transfer ownership")
 	}
 
 	// Check if there's already a pending transfer
@@ -112,7 +113,7 @@ func (s *WorkspaceTransferService) RespondToTransfer(
 	transfer.Message = req.Message
 
 	if req.Accept {
-		// Accept: change workspace ownership
+		// Accept: change workspace creator
 		transfer.Status = models.WorkspaceTransferStatusAccepted
 
 		workspace, err := s.workspaceRepo.GetByID(ctx, transfer.WorkspaceID)
@@ -120,9 +121,10 @@ func (s *WorkspaceTransferService) RespondToTransfer(
 			return nil, fmt.Errorf("workspace not found: %w", err)
 		}
 
-		// Update workspace owner
-		workspace.OwnerType = models.OwnerTypeUser
-		workspace.OwnerID = userID
+		// Update workspace creator
+		// Note: In new model, workspaces belong to organizations, 
+		// so we only transfer the CreatedBy field
+		workspace.CreatedBy = userID
 
 		if err := s.workspaceRepo.Update(ctx, workspace); err != nil {
 			return nil, fmt.Errorf("failed to transfer workspace ownership: %w", err)

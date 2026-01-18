@@ -11,7 +11,6 @@ type Config struct {
 	Namespace          string
 	Postgres           PostgresConfig
 	Redis              RedisConfig
-	OPA                OPAConfig
 	SMTP               SMTPConfig
 	LogLevel           string
 	WorkerThreads      int
@@ -35,11 +34,6 @@ type RedisConfig struct {
 	Port     int
 	Password string
 	DB       int
-}
-
-type OPAConfig struct {
-	PolicyPath string
-	DataPath   string
 }
 
 type SMTPConfig struct {
@@ -71,10 +65,6 @@ func Load() (*Config, error) {
 			Port:     GetEnvAsIntOrDefault("REDIS_PORT", 6379),
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       GetEnvAsIntOrDefault("REDIS_DB", 0),
-		},
-		OPA: OPAConfig{
-			PolicyPath: GetEnvOrDefault("OPA_POLICY_PATH", "configs/policy.rego"),
-			DataPath:   GetEnvOrDefault("OPA_DATA_PATH", "configs/data.json"),
 		},
 		SMTP: SMTPConfig{
 			Host:      GetEnvOrDefault("SMTP_HOST", "localhost"),

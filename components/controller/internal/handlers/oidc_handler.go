@@ -77,7 +77,7 @@ func (h *OIDCHandler) InitiateLogin(c *gin.Context) {
 // @Success 200 {object} models.APIResponse{data=map[string]interface{}} "认证成功"
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 500 {object} models.APIResponse "内部服务器错误"
-// @Router /oidc/{provider}/callback [get]
+// @Router /auth/oidc/{provider}/callback [get]
 func (h *OIDCHandler) HandleCallback(c *gin.Context) {
 	state := c.Query("state")
 	code := c.Query("code")
@@ -142,7 +142,7 @@ func (h *OIDCHandler) HandleCallback(c *gin.Context) {
 // @Success 201 {object} models.APIResponse{data=models.OIDCProvider} "创建成功"
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 401 {object} models.APIResponse "未认证"
-// @Router /oidc/providers [post]
+// @Router /settings/oidc [post]
 func (h *OIDCHandler) CreateProvider(c *gin.Context) {
 	var req models.CreateOIDCProviderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -176,16 +176,58 @@ func (h *OIDCHandler) CreateProvider(c *gin.Context) {
 	})
 }
 
+// ListPublicProviders godoc
+// @Summary 列出OIDC提供商（公开接口）
+// @Description 获取已启用的OIDC认证提供商列表，仅返回公开信息（不包含ClientSecret等敏感数据）
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} models.APIResponse{data=[]map[string]interface{}} "成功"
+// @Failure 500 {object} models.APIResponse "内部服务器错误"
+// @Router /auth/oidc/providers [get]
+func (h *OIDCHandler) ListPublicProviders(c *gin.Context) {
+	// Only list enabled providers for public access
+	providers, err := h.oidcService.ListProviders(c.Request.Context(), true)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "LIST_FAILED",
+				Message: "Failed to list OIDC providers",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	// Return only public information (exclude sensitive data)
+	publicProviders := make([]map[string]interface{}, len(providers))
+	for i, provider := range providers {
+		publicProviders[i] = map[string]interface{}{
+			"id":      provider.ID,
+			"name":    provider.Name,
+			"enabled": provider.Enabled,
+		}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    publicProviders,
+	})
+}
+
 // ListProviders godoc
-// @Summary 列出OIDC提供商
-// @Description 获取所有OIDC认证提供商的列表
+// @Summary 列出OIDC提供商（管理接口）
+// @Description 获取所有OIDC认证提供商的完整列表（包含敏感配置信息，需要admin权限）
 // @Tags OIDCManagement
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param enabled_only query boolean false "仅显示已启用的提供商"
 // @Success 200 {object} models.APIResponse{data=[]models.OIDCProvider} "成功"
+// @Failure 401 {object} models.APIResponse "未认证"
 // @Failure 500 {object} models.APIResponse "内部服务器错误"
-// @Router /oidc/providers [get]
+// @Router /settings/oidc [get]
 func (h *OIDCHandler) ListProviders(c *gin.Context) {
 	enabledOnly := c.Query("enabled_only") == "true"
 
@@ -220,7 +262,7 @@ func (h *OIDCHandler) ListProviders(c *gin.Context) {
 // @Success 200 {object} models.APIResponse{data=models.OIDCProvider} "更新成功"
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 401 {object} models.APIResponse "未认证"
-// @Router /oidc/providers/{id} [put]
+// @Router /settings/oidc/{id} [put]
 func (h *OIDCHandler) UpdateProvider(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
@@ -278,7 +320,7 @@ func (h *OIDCHandler) UpdateProvider(c *gin.Context) {
 // @Success 200 {object} models.APIResponse "删除成功"
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 401 {object} models.APIResponse "未认证"
-// @Router /auth/oidc/providers/{id} [delete]
+// @Router /settings/oidc/{id} [delete]
 func (h *OIDCHandler) DeleteProvider(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)

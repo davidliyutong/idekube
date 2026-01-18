@@ -22,7 +22,7 @@ func NewOrganizationHandler(orgService *services.OrganizationService) *Organizat
 	}
 }
 
-// CreateOrganization godoc
+// Create godoc
 // @Summary 创建组织
 // @Description 创建新的组织
 // @Tags Organization
@@ -34,7 +34,7 @@ func NewOrganizationHandler(orgService *services.OrganizationService) *Organizat
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 401 {object} models.APIResponse "未认证"
 // @Router /organizations [post]
-func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
+func (h *OrganizationHandler) Create(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
 	var req models.CreateOrganizationRequest
@@ -69,73 +69,7 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 	})
 }
 
-// GetOrganization godoc
-// @Summary 获取组织详情
-// @Description 根据ID获取组织的详细信息
-// @Tags Organization
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "组织ID"
-// @Param with_members query boolean false "是否包含成员信息"
-// @Success 200 {object} models.APIResponse{data=models.Organization} "成功"
-// @Failure 400 {object} models.APIResponse "请求参数错误"
-// @Failure 401 {object} models.APIResponse "未认证"
-// @Failure 404 {object} models.APIResponse "未找到"
-// @Router /organizations/{id} [get]
-func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid organization ID",
-			},
-		})
-		return
-	}
-
-	// Check if user wants detailed view with members
-	withMembers := c.Query("with_members") == "true"
-
-	if withMembers {
-		orgWithMembers, err := h.orgService.GetOrganizationWithMembers(c.Request.Context(), id)
-		if err != nil {
-			c.JSON(http.StatusNotFound, models.APIResponse{
-				Success: false,
-				Error: &models.APIError{
-					Code:    "NOT_FOUND",
-					Message: "Organization not found",
-				},
-			})
-			return
-		}
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data:    orgWithMembers,
-		})
-	} else {
-		org, err := h.orgService.GetOrganization(c.Request.Context(), id)
-		if err != nil {
-			c.JSON(http.StatusNotFound, models.APIResponse{
-				Success: false,
-				Error: &models.APIError{
-					Code:    "NOT_FOUND",
-					Message: "Organization not found",
-				},
-			})
-			return
-		}
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data:    org,
-		})
-	}
-}
-
-// ListUserOrganizations godoc
+// List godoc
 // @Summary 列出用户的组织
 // @Description 获取当前用户所属的所有组织
 // @Tags Organization
@@ -150,7 +84,7 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 // @Failure 401 {object} models.APIResponse "未认证"
 // @Failure 500 {object} models.APIResponse "内部服务器错误"
 // @Router /organizations [get]
-func (h *OrganizationHandler) ListUserOrganizations(c *gin.Context) {
+func (h *OrganizationHandler) List(c *gin.Context) {
 	userID := middleware.MustGetUserID(c)
 
 	// Check if requesting all organizations (permission already checked by RBAC middleware)
@@ -218,82 +152,7 @@ func (h *OrganizationHandler) ListUserOrganizations(c *gin.Context) {
 	})
 }
 
-// UpdateOrganization godoc
-// @Summary 更新组织
-// @Description 更新组织信息
-// @Tags Organization
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "组织ID"
-// @Param request body models.UpdateOrganizationRequest true "组织更新请求"
-// @Success 200 {object} models.APIResponse{data=models.Organization} "更新成功"
-// @Failure 400 {object} models.APIResponse "请求参数错误"
-// @Failure 401 {object} models.APIResponse "未认证"
-// @Failure 403 {object} models.APIResponse "权限不足"
-// @Router /organizations/{id} [put]
-func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid organization ID",
-			},
-		})
-		return
-	}
-
-	userID := middleware.MustGetUserID(c)
-
-	// Check if user has admin permission
-	hasPermission, err := h.orgService.CheckMemberPermission(c.Request.Context(), id, userID, models.OrgRoleAdmin)
-	if err != nil || !hasPermission {
-		c.JSON(http.StatusForbidden, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "FORBIDDEN",
-				Message: "Insufficient permissions",
-			},
-		})
-		return
-	}
-
-	var req models.UpdateOrganizationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request body",
-				Details: err.Error(),
-			},
-		})
-		return
-	}
-
-	org, err := h.orgService.UpdateOrganization(c.Request.Context(), id, &req)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "UPDATE_FAILED",
-				Message: "Failed to update organization",
-				Details: err.Error(),
-			},
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    org,
-	})
-}
-
-// DeleteOrganization godoc
+// Delete godoc
 // @Summary 删除组织
 // @Description 删除指定的组织（仅所有者可操作）
 // @Tags Organization
@@ -306,7 +165,7 @@ func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 // @Failure 401 {object} models.APIResponse "未认证"
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Router /organizations/{id} [delete]
-func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
+func (h *OrganizationHandler) Delete(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
 	if err != nil {
@@ -354,7 +213,181 @@ func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
 	})
 }
 
-// AddMember godoc
+// ============================================================================
+// Profile Sub-resource Handlers
+// ============================================================================
+
+// GetProfile godoc
+// @Summary 获取组织Profile
+// @Description 获取指定组织的Profile子资源
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Success 200 {object} models.APIResponse{data=models.OrganizationProfileResponse} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/profile [get]
+func (h *OrganizationHandler) GetProfile(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	profile, err := h.orgService.GetOrganizationProfile(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "NOT_FOUND",
+				Message: "Organization not found",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    profile,
+	})
+}
+
+// UpdateProfile godoc
+// @Summary 更新组织Profile
+// @Description 更新指定组织的Profile子资源
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Param request body models.UpdateOrganizationProfileRequest true "Profile更新请求"
+// @Success 200 {object} models.APIResponse{data=models.OrganizationProfileResponse} "更新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 403 {object} models.APIResponse "权限不足"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/profile [put]
+func (h *OrganizationHandler) UpdateProfile(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	userID := middleware.MustGetUserID(c)
+
+	// Check if user has admin permission
+	hasPermission, err := h.orgService.CheckMemberPermission(c.Request.Context(), id, userID, models.OrgRoleAdmin)
+	if err != nil || !hasPermission {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "FORBIDDEN",
+				Message: "Insufficient permissions",
+			},
+		})
+		return
+	}
+
+	var req models.UpdateOrganizationProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request body",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	profile, err := h.orgService.UpdateOrganizationProfile(c.Request.Context(), id, &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "UPDATE_FAILED",
+				Message: "Failed to update organization profile",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    profile,
+	})
+}
+
+// ============================================================================
+// Members Sub-resource Handlers
+// ============================================================================
+
+// ListMembers godoc
+// @Summary 获取组织成员列表
+// @Description 获取指定组织的所有成员
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Success 200 {object} models.APIResponse{data=[]models.OrganizationMemberWithUser} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/members [get]
+func (h *OrganizationHandler) ListMembers(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	members, err := h.orgService.ListOrganizationMembers(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "NOT_FOUND",
+				Message: "Organization not found",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    members,
+	})
+}
+
+// AddMembers godoc
 // @Summary 添加组织成员
 // @Description 向组织添加新成员（需要管理员权限）
 // @Tags Organization Management
@@ -368,7 +401,7 @@ func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
 // @Failure 401 {object} models.APIResponse "未认证"
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Router /organizations/{id}/members [post]
-func (h *OrganizationHandler) AddMember(c *gin.Context) {
+func (h *OrganizationHandler) AddMembers(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := strconv.ParseInt(idParam, 10, 64)
 	if err != nil {
@@ -593,6 +626,55 @@ func (h *OrganizationHandler) UpdateMemberRole(c *gin.Context) {
 	})
 }
 
+// ============================================================================
+// Admins Sub-resource Handlers
+// ============================================================================
+
+// ListAdmins godoc
+// @Summary 获取组织管理员列表
+// @Description 获取指定组织的所有管理员
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Success 200 {object} models.APIResponse{data=[]models.OrganizationMemberWithUser} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/admins [get]
+func (h *OrganizationHandler) ListAdmins(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	admins, err := h.orgService.ListOrganizationAdmins(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "NOT_FOUND",
+				Message: "Organization not found",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    admins,
+	})
+}
+
 // PromoteToAdmin godoc
 // @Summary 提升为管理员
 // @Description 将组织成员提升为管理员（仅所有者可操作）
@@ -743,26 +825,73 @@ func (h *OrganizationHandler) DemoteFromAdmin(c *gin.Context) {
 	})
 }
 
-// SearchUsers godoc
-// @Summary 搜索用户
-// @Description 搜索用户以邀请加入组织（需要管理员权限）
-// @Tags Organization Management
+// ============================================================================
+// Owner Sub-resource Handlers
+// ============================================================================
+
+// GetOwner godoc
+// @Summary 获取组织所有者
+// @Description 获取指定组织的所有者信息
+// @Tags Organization Sub-resources
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "组织ID"
-// @Param q query string true "搜索关键词"
-// @Param page query int false "页码" default(1)
-// @Param page_size query int false "每页数量" default(10)
-// @Success 200 {object} models.APIResponse{data=models.PaginatedResponse} "搜索成功"
+// @Success 200 {object} models.APIResponse{data=models.User} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/owner [get]
+func (h *OrganizationHandler) GetOwner(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	owner, err := h.orgService.GetOrganizationOwner(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "NOT_FOUND",
+				Message: "Organization or owner not found",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    owner,
+	})
+}
+
+// TransferOwnership godoc
+// @Summary 转移组织所有权
+// @Description 将组织所有权转移给另一个用户（仅所有者可操作）
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Param request body models.TransferOwnershipRequest true "转移请求"
+// @Success 200 {object} models.APIResponse "转移成功"
 // @Failure 400 {object} models.APIResponse "请求参数错误"
 // @Failure 401 {object} models.APIResponse "未认证"
 // @Failure 403 {object} models.APIResponse "权限不足"
-// @Failure 500 {object} models.APIResponse "内部服务器错误"
-// @Router /organizations/{id}/search-users [get]
-func (h *OrganizationHandler) SearchUsers(c *gin.Context) {
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/owner [put]
+func (h *OrganizationHandler) TransferOwnership(c *gin.Context) {
 	idParam := c.Param("id")
-	orgID, err := strconv.ParseInt(idParam, 10, 64)
+	id, err := strconv.ParseInt(idParam, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
@@ -776,72 +905,157 @@ func (h *OrganizationHandler) SearchUsers(c *gin.Context) {
 
 	currentUserID := middleware.MustGetUserID(c)
 
-	// Check if current user has admin permission
-	hasPermission, err := h.orgService.CheckMemberPermission(c.Request.Context(), orgID, currentUserID, models.OrgRoleAdmin)
+	// Check if user is owner
+	hasPermission, err := h.orgService.CheckMemberPermission(c.Request.Context(), id, currentUserID, models.OrgRoleOwner)
 	if err != nil || !hasPermission {
 		c.JSON(http.StatusForbidden, models.APIResponse{
 			Success: false,
 			Error: &models.APIError{
 				Code:    "FORBIDDEN",
-				Message: "Only organization admins can search users",
+				Message: "Only organization owner can transfer ownership",
 			},
 		})
 		return
 	}
 
-	query := c.Query("q")
-	if query == "" {
+	var req models.TransferOwnershipRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
 			Error: &models.APIError{
 				Code:    "INVALID_REQUEST",
-				Message: "Query parameter 'q' is required",
-			},
-		})
-		return
-	}
-
-	var opts models.ListOptions
-	if err := c.ShouldBindQuery(&opts); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{
-			Success: false,
-			Error: &models.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid query parameters",
+				Message: "Invalid request body",
 				Details: err.Error(),
 			},
 		})
 		return
 	}
 
-	// Use the existing user service method through organization service
-	// This needs to be implemented in OrganizationService to call UserService
-	users, total, err := h.orgService.SearchUsersForInvite(c.Request.Context(), orgID, query, &opts)
+	err = h.orgService.TransferOwnership(c.Request.Context(), id, req.NewOwnerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
+		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
 			Error: &models.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: "Failed to search users",
+				Code:    "TRANSFER_FAILED",
+				Message: "Failed to transfer ownership",
 				Details: err.Error(),
 			},
 		})
 		return
-	}
-
-	totalPages := int(total) / opts.PageSize
-	if int(total)%opts.PageSize > 0 {
-		totalPages++
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data: models.PaginatedResponse{
-			Items:      users,
-			Total:      total,
-			Page:       opts.Page,
-			PageSize:   opts.PageSize,
-			TotalPages: totalPages,
-		},
+		Message: "Ownership transferred successfully",
+	})
+}
+
+// ============================================================================
+// Quota Sub-resource Handlers
+// ============================================================================
+
+// GetQuota godoc
+// @Summary 获取组织配额
+// @Description 获取指定组织的配额子资源
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Success 200 {object} models.APIResponse{data=models.OrganizationQuotaResponse} "成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/quota [get]
+func (h *OrganizationHandler) GetQuota(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	quota, err := h.orgService.GetOrganizationQuota(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "NOT_FOUND",
+				Message: "Organization or quota not found",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    quota,
+	})
+}
+
+// UpdateQuota godoc
+// @Summary 更新组织配额
+// @Description 更新指定组织的配额子资源
+// @Tags Organization Sub-resources
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "组织ID"
+// @Param request body models.UpdateOrganizationQuotaRequest true "配额更新请求"
+// @Success 200 {object} models.APIResponse{data=models.OrganizationQuotaResponse} "更新成功"
+// @Failure 400 {object} models.APIResponse "请求参数错误"
+// @Failure 401 {object} models.APIResponse "未认证"
+// @Failure 403 {object} models.APIResponse "权限不足"
+// @Failure 404 {object} models.APIResponse "组织不存在"
+// @Router /organizations/{id}/quota [put]
+func (h *OrganizationHandler) UpdateQuota(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid organization ID",
+			},
+		})
+		return
+	}
+
+	var req models.UpdateOrganizationQuotaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request body",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	quota, err := h.orgService.UpdateOrganizationQuota(c.Request.Context(), id, &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Error: &models.APIError{
+				Code:    "UPDATE_FAILED",
+				Message: "Failed to update organization quota",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    quota,
 	})
 }

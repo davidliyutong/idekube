@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/davidliyutong/idekube-controller/internal/models"
-	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/pkg/queue"
 	"github.com/google/uuid"
@@ -15,27 +14,33 @@ import (
 
 // OrganizationService handles organization business logic
 type OrganizationService struct {
-	orgRepo           *repository.OrganizationRepository
-	userRepo          *repository.UserRepository
-	userService       *UserService
-	eventPublisher    *queue.EventPublisher
-	permissionService *permission.ResourcePermissionService
+	orgRepo        *repository.OrganizationRepository
+	userRepo       *repository.UserRepository
+	quotaRepo      *repository.QuotaRepository
+	workspaceRepo  *repository.WorkspaceRepository
+	volumeRepo     *repository.VolumeRepository
+	userService    *UserService
+	eventPublisher *queue.EventPublisher
 }
 
 // NewOrganizationService creates a new organization service
 func NewOrganizationService(
 	orgRepo *repository.OrganizationRepository,
 	userRepo *repository.UserRepository,
+	quotaRepo *repository.QuotaRepository,
+	workspaceRepo *repository.WorkspaceRepository,
+	volumeRepo *repository.VolumeRepository,
 	userService *UserService,
 	eventPublisher *queue.EventPublisher,
-	permissionService *permission.ResourcePermissionService,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:           orgRepo,
-		userRepo:          userRepo,
-		userService:       userService,
-		eventPublisher:    eventPublisher,
-		permissionService: permissionService,
+		orgRepo:        orgRepo,
+		userRepo:       userRepo,
+		quotaRepo:      quotaRepo,
+		workspaceRepo:  workspaceRepo,
+		volumeRepo:     volumeRepo,
+		userService:    userService,
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -47,15 +52,22 @@ func (s *OrganizationService) CreateOrganization(ctx context.Context, ownerID in
 		return nil, fmt.Errorf("owner user not found")
 	}
 
+	now := time.Now()
 	org := &models.Organization{
-		UUID:        uuid.New(),
-		Name:        req.Name,
-		DisplayName: req.DisplayName,
-		Description: req.Description,
-		OwnerID:     ownerID,
-		Settings:    req.Settings,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		Base: models.Base{
+			UUID:      uuid.New(),
+			CreatedAt: now,
+			UpdatedAt: now,
+			Status:    models.OrganizationStatusActive,
+		},
+		Profile: models.Profile{
+			Identifier:  req.Name,
+			DisplayName: req.DisplayName,
+			Description: req.Description,
+			IconURL:     req.IconURL,
+		},
+		OwnerID:  ownerID,
+		Settings: req.Settings,
 	}
 
 	err = s.orgRepo.Create(ctx, org)
@@ -68,23 +80,12 @@ func (s *OrganizationService) CreateOrganization(ctx context.Context, ownerID in
 		OrganizationID: org.ID,
 		UserID:         ownerID,
 		Role:           models.OrgRoleOwner,
-		JoinedAt:       time.Now(),
+		JoinedAt:       now,
 	}
 
 	err = s.orgRepo.AddMember(ctx, member)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add owner as member: %w", err)
-	}
-
-	// Grant ownership permissions automatically (if permission service is available)
-	if s.permissionService != nil {
-		if err := s.permissionService.GrantResourceOwnership(ctx, ownerID, "organization", org.ID); err != nil {
-			// Log warning but don't fail the creation - permissions can be fixed later
-			zap.L().Warn("Failed to grant organization ownership permissions",
-				zap.Int64("org_id", org.ID),
-				zap.Int64("owner_id", ownerID),
-				zap.Error(err))
-		}
 	}
 
 	return org, nil
@@ -146,11 +147,14 @@ func (s *OrganizationService) UpdateOrganization(ctx context.Context, id int64, 
 	if req.Description != nil {
 		org.Description = req.Description
 	}
-	if req.AvatarURL != nil {
-		org.AvatarURL = req.AvatarURL
+	if req.IconURL != nil {
+		org.IconURL = req.IconURL
 	}
 	if req.Settings != nil {
 		org.Settings = req.Settings
+	}
+	if req.Labels != nil {
+		org.Labels = req.Labels
 	}
 
 	err = s.orgRepo.Update(ctx, org)
@@ -177,7 +181,7 @@ func (s *OrganizationService) DeleteOrganization(ctx context.Context, id int64) 
 
 	// Publish delete event to HouseKeeper for K8S resource cleanup
 	if s.eventPublisher != nil {
-		if err := s.eventPublisher.PublishOrganizationDelete(ctx, id, org.Name); err != nil {
+		if err := s.eventPublisher.PublishOrganizationDelete(ctx, id, org.Identifier); err != nil {
 			// Log error but don't fail the operation
 			// HouseKeeper reconciler will handle cleanup eventually
 			zap.L().Error("Failed to publish organization delete event",
@@ -221,28 +225,6 @@ func (s *OrganizationService) AddMember(ctx context.Context, orgID int64, req *m
 		return nil, fmt.Errorf("failed to add member: %w", err)
 	}
 
-	// Grant organization membership permissions (if permission service is available)
-	if s.permissionService != nil {
-		if err := s.permissionService.GrantOrganizationMembership(ctx, user.ID, orgID, string(role)); err != nil {
-			zap.L().Warn("Failed to grant organization membership permissions",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", user.ID),
-				zap.String("role", string(role)),
-				zap.Error(err))
-		}
-
-		// Grant access to organization resources (workspaces, volumes, etc.)
-		for _, resourceType := range []string{"workspace", "volume"} {
-			if err := s.permissionService.GrantOrganizationResourceAccess(ctx, user.ID, orgID, resourceType); err != nil {
-				zap.L().Warn("Failed to grant organization resource access",
-					zap.Int64("org_id", orgID),
-					zap.Int64("user_id", user.ID),
-					zap.String("resource_type", resourceType),
-					zap.Error(err))
-			}
-		}
-	}
-
 	return member, nil
 }
 
@@ -258,22 +240,7 @@ func (s *OrganizationService) RemoveMember(ctx context.Context, orgID, userID in
 		return fmt.Errorf("cannot remove the owner from the organization")
 	}
 
-	err = s.orgRepo.RemoveMember(ctx, orgID, userID)
-	if err != nil {
-		return err
-	}
-
-	// Revoke organization permissions (if permission service is available)
-	if s.permissionService != nil {
-		if err := s.permissionService.RevokeResourcePermissions(ctx, userID, "organization", orgID); err != nil {
-			zap.L().Warn("Failed to revoke organization permissions",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", userID),
-				zap.Error(err))
-		}
-	}
-
-	return nil
+	return s.orgRepo.RemoveMember(ctx, orgID, userID)
 }
 
 // UpdateMemberRole updates a member's role
@@ -288,36 +255,9 @@ func (s *OrganizationService) UpdateMemberRole(ctx context.Context, orgID, userI
 		return nil, fmt.Errorf("cannot change the owner's role")
 	}
 
-	// Get old role before update
-	oldMember, err := s.orgRepo.GetMember(ctx, orgID, userID)
-	if err != nil {
-		return nil, err
-	}
-
 	err = s.orgRepo.UpdateMemberRole(ctx, orgID, userID, req.Role)
 	if err != nil {
 		return nil, err
-	}
-
-	// Update permissions if role changed (if permission service is available)
-	if s.permissionService != nil && oldMember.Role != req.Role {
-		// Revoke old role permissions
-		if err := s.permissionService.RevokeResourcePermissions(ctx, userID, "organization", orgID); err != nil {
-			zap.L().Warn("Failed to revoke old organization permissions",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", userID),
-				zap.String("old_role", string(oldMember.Role)),
-				zap.Error(err))
-		}
-
-		// Grant new role permissions
-		if err := s.permissionService.GrantOrganizationMembership(ctx, userID, orgID, string(req.Role)); err != nil {
-			zap.L().Warn("Failed to grant new organization permissions",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", userID),
-				zap.String("new_role", string(req.Role)),
-				zap.Error(err))
-		}
 	}
 
 	return s.orgRepo.GetMember(ctx, orgID, userID)
@@ -374,31 +314,7 @@ func (s *OrganizationService) PromoteToAdmin(ctx context.Context, orgID, targetU
 	}
 
 	// Update role in database
-	err = s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleAdmin)
-	if err != nil {
-		return err
-	}
-
-	// Update permissions (if permission service is available)
-	if s.permissionService != nil {
-		// Revoke old member permissions
-		if err := s.permissionService.RevokeResourcePermissions(ctx, targetUserID, "organization", orgID); err != nil {
-			zap.L().Warn("Failed to revoke old permissions during promotion",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", targetUserID),
-				zap.Error(err))
-		}
-
-		// Grant admin permissions
-		if err := s.permissionService.GrantOrganizationMembership(ctx, targetUserID, orgID, "admin"); err != nil {
-			zap.L().Warn("Failed to grant admin permissions",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", targetUserID),
-				zap.Error(err))
-		}
-	}
-
-	return nil
+	return s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleAdmin)
 }
 
 // DemoteFromAdmin demotes an admin to member role (owner only)
@@ -430,31 +346,7 @@ func (s *OrganizationService) DemoteFromAdmin(ctx context.Context, orgID, target
 	}
 
 	// Update role in database
-	err = s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleMember)
-	if err != nil {
-		return err
-	}
-
-	// Update permissions (if permission service is available)
-	if s.permissionService != nil {
-		// Revoke admin permissions
-		if err := s.permissionService.RevokeResourcePermissions(ctx, targetUserID, "organization", orgID); err != nil {
-			zap.L().Warn("Failed to revoke admin permissions during demotion",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", targetUserID),
-				zap.Error(err))
-		}
-
-		// Grant member permissions
-		if err := s.permissionService.GrantOrganizationMembership(ctx, targetUserID, orgID, "member"); err != nil {
-			zap.L().Warn("Failed to grant member permissions",
-				zap.Int64("org_id", orgID),
-				zap.Int64("user_id", targetUserID),
-				zap.Error(err))
-		}
-	}
-
-	return nil
+	return s.orgRepo.UpdateMemberRole(ctx, orgID, targetUserID, models.OrgRoleMember)
 }
 
 // GetUserOrganizationRole gets user's role in an organization
@@ -476,4 +368,260 @@ func (s *OrganizationService) SearchUsersForInvite(ctx context.Context, orgID in
 	}
 
 	return s.userService.SearchUsers(ctx, query, opts)
+}
+
+// GetOrganizationOwner returns the organization's owner user information
+func (s *OrganizationService) GetOrganizationOwner(ctx context.Context, orgID int64) (*models.User, error) {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+
+	owner, err := s.userRepo.GetByID(ctx, org.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("owner not found: %w", err)
+	}
+
+	return owner, nil
+}
+
+// TransferOwnership transfers organization ownership to another user
+func (s *OrganizationService) TransferOwnership(ctx context.Context, orgID, newOwnerID int64) error {
+	// Get organization
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return fmt.Errorf("organization not found: %w", err)
+	}
+
+	// Verify new owner exists
+	_, err = s.userRepo.GetByID(ctx, newOwnerID)
+	if err != nil {
+		return fmt.Errorf("new owner user not found: %w", err)
+	}
+
+	// Check if new owner is already a member
+	member, err := s.orgRepo.GetMember(ctx, orgID, newOwnerID)
+	if err != nil || member == nil {
+		return fmt.Errorf("new owner must be a member of the organization")
+	}
+
+	// Update old owner to admin role
+	oldOwnerID := org.OwnerID
+	if oldOwnerID != newOwnerID {
+		err = s.orgRepo.UpdateMemberRole(ctx, orgID, oldOwnerID, models.OrgRoleAdmin)
+		if err != nil {
+			return fmt.Errorf("failed to update old owner role: %w", err)
+		}
+	}
+
+	// Update new owner's member role
+	err = s.orgRepo.UpdateMemberRole(ctx, orgID, newOwnerID, models.OrgRoleOwner)
+	if err != nil {
+		return fmt.Errorf("failed to update new owner member role: %w", err)
+	}
+
+	// Update organization's owner_id
+	org.OwnerID = newOwnerID
+	err = s.orgRepo.Update(ctx, org)
+	if err != nil {
+		return fmt.Errorf("failed to update organization owner: %w", err)
+	}
+
+	return nil
+}
+
+// ============================================================================
+// Sub-resource APIs
+// ============================================================================
+
+// GetOrganizationProfile returns the organization's profile sub-resource
+func (s *OrganizationService) GetOrganizationProfile(ctx context.Context, orgID int64) (*models.OrganizationProfileResponse, error) {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.OrganizationProfileResponse{
+		Identifier:  org.Identifier,
+		DisplayName: org.DisplayName,
+		IconURL:     org.IconURL,
+		Description: org.Description,
+	}, nil
+}
+
+// UpdateOrganizationProfile updates the organization's profile sub-resource
+func (s *OrganizationService) UpdateOrganizationProfile(ctx context.Context, orgID int64, req *models.UpdateOrganizationProfileRequest) (*models.OrganizationProfileResponse, error) {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update profile fields
+	if req.DisplayName != nil {
+		org.DisplayName = req.DisplayName
+	}
+	if req.IconURL != nil {
+		org.IconURL = req.IconURL
+	}
+	if req.Description != nil {
+		org.Description = req.Description
+	}
+
+	err = s.orgRepo.Update(ctx, org)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	return &models.OrganizationProfileResponse{
+		Identifier:  org.Identifier,
+		DisplayName: org.DisplayName,
+		IconURL:     org.IconURL,
+		Description: org.Description,
+	}, nil
+}
+
+// ListOrganizationMembers lists all members of an organization
+func (s *OrganizationService) ListOrganizationMembers(ctx context.Context, orgID int64) ([]models.OrganizationMemberWithUser, error) {
+	members, err := s.orgRepo.ListMembers(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load user details for each member
+	membersWithUser := make([]models.OrganizationMemberWithUser, 0, len(members))
+	for _, m := range members {
+		user, err := s.userRepo.GetByID(ctx, m.UserID)
+		if err != nil {
+			continue
+		}
+		membersWithUser = append(membersWithUser, models.OrganizationMemberWithUser{
+			OrganizationMember: *m,
+			User:               user,
+		})
+	}
+
+	return membersWithUser, nil
+}
+
+// ListOrganizationAdmins lists all admins of an organization
+func (s *OrganizationService) ListOrganizationAdmins(ctx context.Context, orgID int64) ([]models.OrganizationMemberWithUser, error) {
+	members, err := s.orgRepo.ListMembers(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to only admins and owners, load user details
+	adminsWithUser := make([]models.OrganizationMemberWithUser, 0)
+	for _, m := range members {
+		if m.Role == models.OrgRoleAdmin || m.Role == models.OrgRoleOwner {
+			user, err := s.userRepo.GetByID(ctx, m.UserID)
+			if err != nil {
+				continue
+			}
+			adminsWithUser = append(adminsWithUser, models.OrganizationMemberWithUser{
+				OrganizationMember: *m,
+				User:               user,
+			})
+		}
+	}
+
+	return adminsWithUser, nil
+}
+
+// GetOrganizationQuota returns the organization's quota sub-resource
+func (s *OrganizationService) GetOrganizationQuota(ctx context.Context, orgID int64) (*models.OrganizationQuotaResponse, error) {
+	if s.quotaRepo == nil {
+		return nil, fmt.Errorf("quota repository not available")
+	}
+
+	quota, err := s.quotaRepo.GetByOrganizationID(ctx, orgID)
+	if err != nil {
+		// Return default quota if not found
+		return &models.OrganizationQuotaResponse{}, nil
+	}
+
+	return &models.OrganizationQuotaResponse{
+		CPUMillicores:  quota.CPUMillicores,
+		MemoryMB:       quota.MemoryMB,
+		StorageMB:      quota.StorageMB,
+		GPU:            quota.GPU,
+		Workspaces:     quota.Workspaces,
+		Volumes:        quota.Volumes,
+		TimeoutSeconds: quota.TimeoutSeconds,
+	}, nil
+}
+
+// UpdateOrganizationQuota updates the organization's quota sub-resource
+func (s *OrganizationService) UpdateOrganizationQuota(ctx context.Context, orgID int64, req *models.UpdateOrganizationQuotaRequest) (*models.OrganizationQuotaResponse, error) {
+	if s.quotaRepo == nil {
+		return nil, fmt.Errorf("quota repository not available")
+	}
+
+	quota, err := s.quotaRepo.GetByOrganizationID(ctx, orgID)
+	if err != nil {
+		// Create new quota if not found
+		quota = &models.Quota{
+			OrganizationID: orgID,
+		}
+	}
+
+	// Update quota fields
+	if req.CPUMillicores != nil {
+		quota.CPUMillicores = req.CPUMillicores
+	}
+	if req.MemoryMB != nil {
+		quota.MemoryMB = req.MemoryMB
+	}
+	if req.StorageMB != nil {
+		quota.StorageMB = req.StorageMB
+	}
+	if req.GPU != nil {
+		quota.GPU = req.GPU
+	}
+	if req.Workspaces != nil {
+		quota.Workspaces = req.Workspaces
+	}
+	if req.Volumes != nil {
+		quota.Volumes = req.Volumes
+	}
+	if req.TimeoutSeconds != nil {
+		quota.TimeoutSeconds = req.TimeoutSeconds
+	}
+
+	if quota.ID == 0 {
+		err = s.quotaRepo.Create(ctx, quota)
+	} else {
+		err = s.quotaRepo.Update(ctx, quota)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to update quota: %w", err)
+	}
+
+	return &models.OrganizationQuotaResponse{
+		CPUMillicores:  quota.CPUMillicores,
+		MemoryMB:       quota.MemoryMB,
+		StorageMB:      quota.StorageMB,
+		GPU:            quota.GPU,
+		Workspaces:     quota.Workspaces,
+		Volumes:        quota.Volumes,
+		TimeoutSeconds: quota.TimeoutSeconds,
+	}, nil
+}
+
+// ListOrganizationWorkspaces lists all workspaces belonging to an organization
+func (s *OrganizationService) ListOrganizationWorkspaces(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Workspace, int64, error) {
+	if s.workspaceRepo == nil {
+		return nil, 0, fmt.Errorf("workspace repository not available")
+	}
+
+	return s.workspaceRepo.ListByOrganization(ctx, orgID, opts)
+}
+
+// ListOrganizationVolumes lists all volumes belonging to an organization
+func (s *OrganizationService) ListOrganizationVolumes(ctx context.Context, orgID int64, opts *models.ListOptions) ([]*models.Volume, int64, error) {
+	if s.volumeRepo == nil {
+		return nil, 0, fmt.Errorf("volume repository not available")
+	}
+
+	return s.volumeRepo.ListByOrganization(ctx, orgID, opts)
 }

@@ -24,8 +24,6 @@ const VolumesPage = () => import('@/pages/volumes/VolumesPage.vue')
 const VolumeDetailPage = () => import('@/pages/volumes/VolumeDetailPage.vue')
 const SettingsPage = () => import('@/pages/settings/SettingsPage.vue')
 const ProfilePage = () => import('@/pages/profile/ProfilePage.vue')
-const WebhooksPage = () => import('@/pages/webhooks/WebhooksPage.vue')
-const APIKeysPage = () => import('@/pages/api-keys/APIKeysPage.vue')
 
 const routes: RouteRecordRaw[] = [
   {
@@ -128,17 +126,6 @@ const routes: RouteRecordRaw[] = [
         path: 'profile',
         name: 'profile',
         component: ProfilePage,
-      },
-      {
-        path: 'webhooks',
-        name: 'webhooks',
-        component: WebhooksPage,
-        meta: { requiresAdmin: true },
-      },
-      {
-        path: 'api-keys',
-        name: 'api-keys',
-        component: APIKeysPage,
       },
     ],
   },

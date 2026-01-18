@@ -76,3 +76,22 @@ type TokenPair struct {
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
+
+// RegisterRequest represents a user registration request
+type RegisterRequest struct {
+	Username    string  `json:"username" binding:"required,min=3,max=50"`
+	Password    string  `json:"password" binding:"required,min=8"`
+	DisplayName string  `json:"display_name" binding:"required,min=1,max=100"`
+	Email       *string `json:"email" binding:"omitempty,email"`
+}
+
+// RequestPasswordResetRequest represents a password reset request
+type RequestPasswordResetRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResetPasswordRequest represents a password reset with token
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}

@@ -73,7 +73,7 @@ func (h *SettingHandler) GetAllSettings(c *gin.Context) {
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Failure 404 {object} models.APIResponse "配置项不存在"
 // @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /settings/{key} [get]
+// @Router /settings/kv/{key} [get]
 func (h *SettingHandler) GetSetting(c *gin.Context) {
 	key := c.Param("key")
 
@@ -111,7 +111,7 @@ func (h *SettingHandler) GetSetting(c *gin.Context) {
 // @Failure 403 {object} models.APIResponse "权限不足"
 // @Failure 404 {object} models.APIResponse "配置项不存在"
 // @Failure 500 {object} models.APIResponse "服务器错误"
-// @Router /settings/{key} [put]
+// @Router /settings/kv/{key} [put]
 func (h *SettingHandler) UpdateSetting(c *gin.Context) {
 	key := c.Param("key")
 

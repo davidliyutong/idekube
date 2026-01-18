@@ -14,8 +14,6 @@ import (
 	"github.com/davidliyutong/idekube-controller/internal/handlers"
 	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
-	"github.com/davidliyutong/idekube-controller/internal/opa"
-	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/repository"
 	"github.com/davidliyutong/idekube-controller/internal/services"
 	"github.com/davidliyutong/idekube-controller/pkg/database"
@@ -154,17 +152,8 @@ func runController(cmd *cobra.Command, args []string) error {
 	defer redisQueue.Close()
 	zapLogger.Info("Redis queue client initialized")
 
-	// Initialize OPA enforcer and permission service
+	// Initialize logger wrapper
 	log := logger.NewLogger(zapLogger)
-	opaEnforcer, err := opa.NewEnforcer(gormDB, cfg.OPA.PolicyPath, cfg.OPA.DataPath, log)
-	if err != nil {
-		return fmt.Errorf("failed to initialize OPA enforcer: %w", err)
-	}
-	permissionService := permission.NewPermissionService(opaEnforcer, log)
-	resourcePermissionService := permission.NewResourcePermissionService(permissionService)
-	zapLogger.Info("OPA enforcer and permission service initialized",
-		zap.String("policy_path", cfg.OPA.PolicyPath),
-		zap.String("data_path", cfg.OPA.DataPath))
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(gormDB)
@@ -175,8 +164,6 @@ func runController(cmd *cobra.Command, args []string) error {
 	quotaRepo := repository.NewQuotaRepository(gormDB)
 	workspaceTransferRepo := repository.NewWorkspaceTransferRepository(gormDB)
 	settingRepo := repository.NewSettingRepository(gormDB)
-	apiKeyRepo := repository.NewAPIKeyRepository(gormDB)
-	webhookRepo := repository.NewWebhookRepository(gormDB)
 	oidcProviderRepo := repository.NewOIDCProviderRepository(gormDB)
 	oauthSessionRepo := repository.NewOAuthSessionRepository(gormDB)
 
@@ -210,15 +197,14 @@ func runController(cmd *cobra.Command, args []string) error {
 	// Initialize login attempt service (needs settingService)
 	loginAttemptService := services.NewLoginAttemptService(redis, settingService)
 
+	authService := services.NewAuthService(userRepo, jwtManager, loginAttemptService)
 	userService := services.NewUserService(userRepo, jwtManager, eventPublisher, loginAttemptService)
 	mfaService := services.NewMFAService(userRepo)
 	templateService := services.NewTemplateService(templateRepo, orgRepo)
-	volumeService := services.NewVolumeService(volumeRepo, eventPublisher, zapLogger, resourcePermissionService)
-	workspaceService := services.NewWorkspaceService(workspaceRepo, templateRepo, volumeRepo, eventPublisher, zapLogger, resourcePermissionService)
+	volumeService := services.NewVolumeService(volumeRepo, workspaceRepo, eventPublisher, zapLogger)
+	workspaceService := services.NewWorkspaceService(workspaceRepo, templateRepo, volumeRepo, eventPublisher, zapLogger)
 	workspaceTransferService := services.NewWorkspaceTransferService(workspaceTransferRepo, workspaceRepo, userRepo)
 	quotaService := services.NewQuotaService(quotaRepo, workspaceRepo, volumeRepo)
-	apiKeyService := services.NewAPIKeyService(apiKeyRepo)
-	webhookService := services.NewWebhookService(webhookRepo)
 	oidcService := services.NewOIDCService(oidcProviderRepo, userRepo, oauthSessionRepo)
 
 	// EmailService with SMTP configuration
@@ -235,8 +221,8 @@ func runController(cmd *cobra.Command, args []string) error {
 		cfg.BaseURL,
 	)
 
-	// OrganizationService needs UserService for SearchUsersForInvite and ResourcePermissionService
-	orgService := services.NewOrganizationService(orgRepo, userRepo, userService, eventPublisher, resourcePermissionService)
+	// OrganizationService needs UserService for SearchUsersForInvite
+	orgService := services.NewOrganizationService(orgRepo, userRepo, quotaRepo, workspaceRepo, volumeRepo, userService, eventPublisher)
 
 	// Setup context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -257,7 +243,7 @@ func runController(cmd *cobra.Command, args []string) error {
 
 	// Initialize admin account if ADMIN_PASSWORD is set
 	if cfg.AdminPassword != "" {
-		if err := initializeAdminAccount(ctx, userService, permissionService, cfg.AdminPassword, zapLogger); err != nil {
+		if err := initializeAdminAccount(ctx, userService, cfg.AdminPassword, zapLogger); err != nil {
 			zapLogger.Error("Failed to initialize admin account", zap.Error(err))
 			// Don't fail startup, just log the error
 		}
@@ -274,34 +260,32 @@ func runController(cmd *cobra.Command, args []string) error {
 	_ = quotaService
 
 	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(authService)
+	accountHandler := handlers.NewAccountHandler(emailService, authService, cfg.EnableRegistration)
 	userHandler := handlers.NewUserHandler(userService, cfg.EnableRegistration)
 	mfaHandler := handlers.NewMFAHandler(mfaService)
 	orgHandler := handlers.NewOrganizationHandler(orgService)
 	templateHandler := handlers.NewTemplateHandler(templateService)
 	volumeHandler := handlers.NewVolumeHandler(volumeService)
 	workspaceHandler := handlers.NewWorkspaceHandler(workspaceService, workspaceTransferService)
-	permissionHandler := handlers.NewPermissionHandler(permissionService)
 	settingHandler := handlers.NewSettingHandler(settingService)
-	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyService)
 	emailHandler := handlers.NewEmailHandler(emailService)
 	oidcHandler := handlers.NewOIDCHandler(oidcService, userService, jwtManager)
-	webhookHandler := handlers.NewWebhookHandler(webhookService)
 
 	// Create and setup API server
-	server := api.NewServer(gormDB, jwtManager, permissionService, log)
+	server := api.NewServer(gormDB, jwtManager, log)
 	server.SetupRoutes(
+		authHandler,
+		accountHandler,
 		userHandler,
 		mfaHandler,
 		orgHandler,
 		templateHandler,
 		workspaceHandler,
 		volumeHandler,
-		permissionHandler,
 		settingHandler,
-		apiKeyHandler,
 		emailHandler,
 		oidcHandler,
-		webhookHandler,
 	)
 
 	// Setup signal handling
@@ -337,38 +321,12 @@ func runController(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// initializeAdminAccount creates the admin account if it doesn't exist and assigns super_admin role
-func initializeAdminAccount(ctx context.Context, userService *services.UserService, permissionService *permission.PermissionService, password string, logger *zap.Logger) error {
+// initializeAdminAccount creates the admin account if it doesn't exist
+func initializeAdminAccount(ctx context.Context, userService *services.UserService, password string, logger *zap.Logger) error {
 	// Check if admin user already exists
-	user, err := userService.GetUserByUsername(ctx, "admin")
+	_, err := userService.GetUserByUsername(ctx, "admin")
 	if err == nil {
-		logger.Info("Admin account already exists, checking role binding...")
-
-		// Check if admin already has super_admin role binding
-		roles, err := permissionService.GetUserRoles(ctx, user.ID)
-		if err != nil {
-			logger.Warn("Failed to get admin roles", zap.Error(err))
-		} else {
-			hasSuperAdmin := false
-			for _, role := range roles {
-				if role == "role:super_admin" {
-					hasSuperAdmin = true
-					break
-				}
-			}
-
-			if !hasSuperAdmin {
-				logger.Info("Assigning super_admin role to admin user...")
-				if err := permissionService.AssignRole(ctx, user.ID, "role:super_admin"); err != nil {
-					logger.Error("Failed to assign super_admin role to admin", zap.Error(err))
-				} else {
-					logger.Info("Super_admin role assigned to admin successfully")
-				}
-			} else {
-				logger.Info("Admin user already has super_admin role")
-			}
-		}
-
+		logger.Info("Admin account already exists")
 		return nil
 	}
 
@@ -395,13 +353,6 @@ func initializeAdminAccount(ctx context.Context, userService *services.UserServi
 		zap.String("username", "admin"),
 		zap.String("email", email),
 		zap.Int64("user_id", createdUser.ID))
-
-	// Assign super_admin role via OPA
-	if err := permissionService.AssignRole(ctx, createdUser.ID, "role:super_admin"); err != nil {
-		logger.Error("Failed to assign super_admin role to newly created admin", zap.Error(err))
-	} else {
-		logger.Info("Super_admin role assigned to admin successfully")
-	}
 
 	logger.Warn("IMPORTANT: Please change the admin password after first login!")
 

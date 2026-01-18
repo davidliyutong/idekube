@@ -91,13 +91,13 @@ type VolumeEvent struct {
 
 // StatusChangeEvent represents a workspace status change event (HouseKeeper -> Controller)
 type StatusChangeEvent struct {
-	Type         string                 `json:"type"`
-	WorkspaceID  int64                  `json:"workspace_id"`
-	OldStatus    models.WorkspaceStatus `json:"old_status"`
-	NewStatus    models.WorkspaceStatus `json:"new_status"`
-	Reason       string                 `json:"reason,omitempty"`
-	ErrorMessage string                 `json:"error_message,omitempty"`
-	Timestamp    time.Time              `json:"timestamp"`
+	Type         string    `json:"type"`
+	WorkspaceID  int64     `json:"workspace_id"`
+	OldStatus    string    `json:"old_status"`
+	NewStatus    string    `json:"new_status"`
+	Reason       string    `json:"reason,omitempty"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
 
 	// K8S resource information
 	K8SResourceStatus *K8SResourceStatus `json:"k8s_resource_status,omitempty"`
@@ -160,7 +160,7 @@ func NewVolumeEvent(eventType string, volume *models.Volume) *VolumeEvent {
 }
 
 // NewStatusChangeEvent creates a new status change event
-func NewStatusChangeEvent(workspaceID int64, oldStatus, newStatus models.WorkspaceStatus, reason string) *StatusChangeEvent {
+func NewStatusChangeEvent(workspaceID int64, oldStatus, newStatus string, reason string) *StatusChangeEvent {
 	return &StatusChangeEvent{
 		Type:        EventTypeStatusChanged,
 		WorkspaceID: workspaceID,

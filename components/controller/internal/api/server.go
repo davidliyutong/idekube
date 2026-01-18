@@ -9,7 +9,6 @@ import (
 	"github.com/davidliyutong/idekube-controller/internal/handlers"
 	"github.com/davidliyutong/idekube-controller/internal/middleware"
 	"github.com/davidliyutong/idekube-controller/internal/models"
-	"github.com/davidliyutong/idekube-controller/internal/permission"
 	"github.com/davidliyutong/idekube-controller/internal/version"
 	"github.com/davidliyutong/idekube-controller/pkg/logger"
 	"github.com/gin-gonic/gin"
@@ -20,17 +19,16 @@ import (
 
 // Server represents the API server
 type Server struct {
-	router            *gin.Engine
-	httpServer        *http.Server
-	db                *gorm.DB
-	jwtManager        *middleware.JWTManager
-	permissionService *permission.PermissionService
-	rateLimiter       *middleware.RateLimiter
-	logger            *logger.Logger
+	router      *gin.Engine
+	httpServer  *http.Server
+	db          *gorm.DB
+	jwtManager  *middleware.JWTManager
+	rateLimiter *middleware.RateLimiter
+	logger      *logger.Logger
 }
 
 // NewServer creates a new API server
-func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, permissionService *permission.PermissionService, logger *logger.Logger) *Server {
+func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, logger *logger.Logger) *Server {
 	// Create rate limiter: 100 requests per minute per IP
 	rateLimiter := middleware.NewRateLimiter(middleware.RateLimitConfig{
 		RequestsPerMinute: 100,
@@ -38,29 +36,27 @@ func NewServer(db *gorm.DB, jwtManager *middleware.JWTManager, permissionService
 	})
 
 	return &Server{
-		router:            gin.Default(),
-		db:                db,
-		jwtManager:        jwtManager,
-		permissionService: permissionService,
-		rateLimiter:       rateLimiter,
-		logger:            logger,
+		router:      gin.Default(),
+		db:          db,
+		jwtManager:  jwtManager,
+		rateLimiter: rateLimiter,
+		logger:      logger,
 	}
 }
 
 // SetupRoutes sets up all API routes
 func (s *Server) SetupRoutes(
+	authHandler *handlers.AuthHandler,
+	accountHandler *handlers.AccountHandler,
 	userHandler *handlers.UserHandler,
 	mfaHandler *handlers.MFAHandler,
 	orgHandler *handlers.OrganizationHandler,
 	templateHandler *handlers.TemplateHandler,
 	workspaceHandler *handlers.WorkspaceHandler,
 	volumeHandler *handlers.VolumeHandler,
-	permissionHandler *handlers.PermissionHandler,
 	settingHandler *handlers.SettingHandler,
-	apiKeyHandler *handlers.APIKeyHandler,
 	emailHandler *handlers.EmailHandler,
 	oidcHandler *handlers.OIDCHandler,
-	webhookHandler *handlers.WebhookHandler,
 ) {
 	// Apply global middleware
 	s.router.Use(middleware.SecurityMiddleware())                         // Security headers
@@ -95,18 +91,25 @@ func (s *Server) SetupRoutes(
 		// Public auth routes (no authentication required)
 		auth := v1.Group("/auth")
 		{
-			auth.POST("/login", userHandler.Login)
-			auth.POST("/refresh", userHandler.RefreshToken)
-			auth.POST("/register", userHandler.Register)
+			// Authentication endpoints
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.POST("/register", accountHandler.Register)
 
-			// Email verification and password reset (public)
-			auth.GET("/verify-email", emailHandler.VerifyEmail)
-			auth.POST("/request-password-reset", emailHandler.RequestPasswordReset)
-			auth.POST("/reset-password", emailHandler.ResetPassword)
+			// Email verification (public)
+			auth.GET("/email/verify", emailHandler.VerifyEmail)
+
+			// Password reset endpoints (public)
+			auth.GET("/password/request-reset", accountHandler.RequestPasswordReset)
+			auth.POST("/password/reset", accountHandler.ResetPassword)
 
 			// OIDC routes (public)
-			auth.GET("/oidc/:provider/login", oidcHandler.InitiateLogin)
-			auth.GET("/oidc/:provider/callback", oidcHandler.HandleCallback)
+			oidc := auth.Group("/oidc")
+			{
+				oidc.GET("/providers", oidcHandler.ListPublicProviders)
+				oidc.GET("/:provider/login", oidcHandler.InitiateLogin)
+				oidc.GET("/:provider/callback", oidcHandler.HandleCallback)
+			}
 		}
 
 		// Protected routes (all require authentication via JWT)
@@ -115,116 +118,127 @@ func (s *Server) SetupRoutes(
 		protected := v1.Group("")
 		protected.Use(middleware.AuthMiddleware(s.jwtManager))
 		protected.Use(middleware.RequireAuth())
-		protected.Use(middleware.RBACMiddleware(s.permissionService))
 		{
 			// Additional auth routes (require authentication)
 			protectedAuth := protected.Group("/auth")
 			{
-				protectedAuth.POST("/logout", userHandler.Logout)
+				protectedAuth.POST("/logout", authHandler.Logout)
 			}
 			// User routes
 			users := protected.Group("/users")
-			users.Use(middleware.RBACCheckEndpoint(s.permissionService, "user"))
 			{
 				// Self-service routes (all authenticated users)
-				users.GET("/me", userHandler.GetProfile)
-				users.PUT("/me", userHandler.UpdateProfile)
-				users.POST("/me/password", userHandler.ChangePassword)
-				users.GET("/:id", userHandler.GetUser)
+				users.GET("/me/profile", userHandler.GetUserProfile)
+				users.PUT("/me/profile", userHandler.UpdateUserProfile)
+				users.GET("/me/email", userHandler.GetUserEmail)
+				users.PUT("/me/email", userHandler.UpdateUserEmail)
+				users.PUT("/me/security/password", userHandler.ChangePassword)
 
 				// MFA routes
-				// FIXME: Uncomment once MFAHandler is properly integrated
-				// users.POST("/me/mfa/enable", mfaHandler.EnableMFA)
-				// users.POST("/me/mfa/verify", mfaHandler.VerifyMFASetup)
-				// users.POST("/me/mfa/backup-codes", mfaHandler.GenerateBackupCodes)
-				// users.POST("/me/mfa/disable", mfaHandler.DisableMFA)
+				users.POST("/me/security/mfa/enable", mfaHandler.EnableMFA)
+				users.POST("/me/security/mfa/verify", mfaHandler.VerifyMFASetup)
+				users.POST("/me/security/mfa/backup-codes", mfaHandler.GenerateBackupCodes)
+				users.POST("/me/security/mfa/disable", mfaHandler.DisableMFA)
 
 				// Power user and Admin routes
-				users.GET("/check", userHandler.CheckUserExists)
+				users.GET("/check", userHandler.CheckUserExistence)
 
 				// Admin routes
-				users.GET("/search", userHandler.SearchUsers)
-				users.GET("", userHandler.ListUsers)
-				users.POST("", userHandler.CreateUser)
-				users.PUT("/:id", userHandler.UpdateUser)
-				users.DELETE("/:id", userHandler.DeleteUser)
-
-				// Role management (admin only)
-				users.POST("/:id/roles", permissionHandler.AssignRole)
-				users.DELETE("/:id/roles", permissionHandler.RemoveRole)
-				users.GET("/:id/roles", permissionHandler.GetUserRoles)
+				users.GET("/search", userHandler.Search)
+				users.GET("", userHandler.List)
+				users.POST("", userHandler.Create)
+				users.PUT("/:id", userHandler.Update)
+				users.DELETE("/:id", userHandler.Delete)
+				users.GET("/:id/profile", userHandler.GetProfile)
+				users.PUT("/:id/profile", userHandler.UpdateProfile)
+				users.GET("/:id/email", userHandler.GetEmail)
+				users.PUT("/:id/email", userHandler.UpdateEmail)
+				users.PUT("/:id/security/password", userHandler.ChangePassword)
+				users.POST("/:id/security/mfa/enable", mfaHandler.EnableMFA)
+				users.POST("/:id/security/mfa/disable", mfaHandler.DisableMFA)
 			}
 
 			// Organization routes
 			orgs := protected.Group("/organizations")
-			orgs.Use(middleware.RBACCheckEndpoint(s.permissionService, "organization"))
 			{
 				// All authenticated users can create organizations
-				orgs.POST("", orgHandler.CreateOrganization)
+				orgs.POST("", orgHandler.Create)
 
 				// List organizations (supports ?all=true for admins)
-				orgs.GET("", orgHandler.ListUserOrganizations)
+				orgs.GET("", orgHandler.List)
 
 				// Organization-specific routes
-				orgs.GET("/:id", orgHandler.GetOrganization)
-				orgs.PUT("/:id", orgHandler.UpdateOrganization)
-				orgs.DELETE("/:id", orgHandler.DeleteOrganization)
+				orgs.DELETE("/:id", orgHandler.Delete)
 
-				// Member management (requires org admin)
-				orgs.POST("/:id/members", orgHandler.AddMember)
+				// Profile sub-resource
+				orgs.GET("/:id/profile", orgHandler.GetProfile)
+				orgs.PUT("/:id/profile", orgHandler.UpdateProfile)
+
+				// Members sub-resource
+				orgs.GET("/:id/members", orgHandler.ListMembers)
+				orgs.POST("/:id/members", orgHandler.AddMembers)
 				orgs.DELETE("/:id/members/:user_id", orgHandler.RemoveMember)
 				orgs.PUT("/:id/members/:user_id", orgHandler.UpdateMemberRole)
 
-				// Admin role management (requires org owner)
+				// Admins sub-resource
+				orgs.GET("/:id/admins", orgHandler.ListAdmins)
 				orgs.POST("/:id/admins/:user_id", orgHandler.PromoteToAdmin)
 				orgs.DELETE("/:id/admins/:user_id", orgHandler.DemoteFromAdmin)
 
-				// User search for invitations (requires org admin)
-				orgs.GET("/:id/search-users", orgHandler.SearchUsers)
+				// Owner sub-resource
+				orgs.GET("/:id/owner", orgHandler.GetOwner)
+				orgs.PUT("/:id/owner", orgHandler.TransferOwnership)
+
+				// Quota sub-resource
+				orgs.GET("/:id/quota", orgHandler.GetQuota)
+				orgs.PUT("/:id/quota", orgHandler.UpdateQuota)
 			}
 
 			// Template routes
 			templates := protected.Group("/templates")
-			templates.Use(middleware.RBACCheckEndpoint(s.permissionService, "template"))
 			{
 				// List templates (supports ?all=true for admins)
-				templates.GET("", templateHandler.ListTemplates)
+				templates.GET("", templateHandler.List)
 
-				// Template CRUD
-				templates.POST("", templateHandler.CreateTemplate)
-				templates.GET("/:id", templateHandler.GetTemplate)
-				templates.PUT("/:id", templateHandler.UpdateTemplate)
-				templates.DELETE("/:id", templateHandler.DeleteTemplate)
+				// Template sub-resource routes
+				templates.GET("/:id/profile", templateHandler.GetProfile)
+				templates.PUT("/:id/profile", templateHandler.UpdateProfile)
+				templates.GET("/:id/image-ref", templateHandler.GetImageRef)
+				templates.PUT("/:id/image-ref", templateHandler.UpdateImageRef)
+				templates.GET("/:id/template-yaml", templateHandler.GetTemplateYAML)
+				templates.PUT("/:id/template-yaml", templateHandler.UpdateTemplateYAML)
+				templates.GET("/:id/public", templateHandler.GetPublic)
+				templates.PUT("/:id/public", templateHandler.SetPublic)
+				templates.GET("/:id/quota", templateHandler.GetQuota)
+				templates.PUT("/:id/quota", templateHandler.UpdateQuota)
 			}
 
 			// Workspace routes
 			workspaces := protected.Group("/workspaces")
-			workspaces.Use(middleware.RBACCheckEndpoint(s.permissionService, "workspace"))
 			{
-				// List workspaces (supports ?organization_id= filter)
-				workspaces.GET("", workspaceHandler.ListWorkspaces)
+				// List and Create workspaces
+				workspaces.GET("", workspaceHandler.List)
+				workspaces.POST("", workspaceHandler.Create)
+				workspaces.DELETE("/:id", workspaceHandler.Delete)
 
-				// Workspace CRUD
-				workspaces.POST("", workspaceHandler.CreateWorkspace)
-				workspaces.GET("/:id", workspaceHandler.GetWorkspace)
-				workspaces.PUT("/:id", workspaceHandler.UpdateWorkspace)
-				workspaces.DELETE("/:id", workspaceHandler.DeleteWorkspace)
-
-				// Workspace operations
-				workspaces.POST("/:id/start", workspaceHandler.StartWorkspace)
-				workspaces.POST("/:id/stop", workspaceHandler.StopWorkspace)
-
-				// Volume management
-				workspaces.POST("/:id/volumes/:volume_id", workspaceHandler.AttachVolume)
-				workspaces.DELETE("/:id/volumes/:volume_id", workspaceHandler.DetachVolume)
-
-				// Workspace transfer
-				workspaces.POST("/:id/transfer", workspaceHandler.InitiateTransfer)
+				// Workspace sub-resource routes
+				workspaces.GET("/:id/profile", workspaceHandler.GetProfile)
+				workspaces.PUT("/:id/profile", workspaceHandler.UpdateProfile)
+				workspaces.GET("/:id/template", workspaceHandler.GetTemplate)
+				workspaces.GET("/:id/volumes", workspaceHandler.ListVolumeMounts)
+				workspaces.PUT("/:id/volumes", workspaceHandler.UpdateVolumeMounts)
+				workspaces.GET("/:id/quota", workspaceHandler.GetQuota)
+				workspaces.PUT("/:id/quota", workspaceHandler.UpdateQuota)
+				workspaces.GET("/:id/public", workspaceHandler.GetPublic)
+				workspaces.PUT("/:id/public", workspaceHandler.SetPublic)
+				workspaces.GET("/:id/owner", workspaceHandler.GetOwner)
+				workspaces.PUT("/:id/owner", workspaceHandler.TransferOwnership)
+				workspaces.GET("/:id/state", workspaceHandler.GetCurrentState)
+				workspaces.PUT("/:id/state", workspaceHandler.UpdateTargetState)
 			}
 
-			// Workspace transfer routes
+			// Workspace transfer routes (kept for backward compatibility)
 			workspaceTransfers := protected.Group("/workspace-transfers")
-			workspaceTransfers.Use(middleware.RBACCheckEndpoint(s.permissionService, "workspace"))
 			{
 				workspaceTransfers.GET("/pending", workspaceHandler.ListPendingTransfers)
 				workspaceTransfers.GET("/:transfer_id", workspaceHandler.GetTransfer)
@@ -234,74 +248,41 @@ func (s *Server) SetupRoutes(
 
 			// Volume routes
 			volumes := protected.Group("/volumes")
-			volumes.Use(middleware.RBACCheckEndpoint(s.permissionService, "volume"))
 			{
-				// List volumes (supports ?organization_id= filter)
-				volumes.GET("", volumeHandler.ListVolumes)
+				// List and Create volumes
+				volumes.GET("", volumeHandler.List)
+				volumes.POST("", volumeHandler.Create)
+				volumes.DELETE("/:id", volumeHandler.Delete)
 
-				// Volume CRUD
-				volumes.POST("", volumeHandler.CreateVolume)
-				volumes.GET("/:id", volumeHandler.GetVolume)
-				volumes.PUT("/:id", volumeHandler.UpdateVolume)
-				volumes.DELETE("/:id", volumeHandler.DeleteVolume)
-
-				// Volume sync
-				volumes.POST("/:id/sync", volumeHandler.SyncVolumeStatus)
+				// Volume sub-resource routes
+				volumes.GET("/:id/profile", volumeHandler.GetProfile)
+				volumes.PUT("/:id/profile", volumeHandler.UpdateProfile)
+				volumes.GET("/:id/size-mb", volumeHandler.GetSizeMB)
+				volumes.PUT("/:id/size-mb", volumeHandler.UpdateSizeMB)
+				volumes.GET("/:id/storage-class", volumeHandler.GetStorageClass)
+				volumes.GET("/:id/access-mode", volumeHandler.GetAccessMode)
+				volumes.GET("/:id/owner", volumeHandler.GetOwner)
+				volumes.PUT("/:id/owner", volumeHandler.TransferOwnership)
+				volumes.GET("/:id/public", volumeHandler.GetPublic)
+				volumes.PUT("/:id/public", volumeHandler.SetPublic)
 			}
 
-			// Permission and policy management routes (admin only)
-			permissions := protected.Group("/permissions")
-			{
-				permissions.POST("/check", permissionHandler.CheckPermission)
-			}
-
-			policies := protected.Group("/policies")
-			{
-				policies.GET("", permissionHandler.GetAllPolicies)
-				policies.POST("", permissionHandler.AddPolicy)
-				policies.DELETE("", permissionHandler.RemovePolicy)
-			}
-
-			// Settings routes (admin only via RBAC)
+			// Settings routes (admin only - checked in handler)
 			settings := protected.Group("/settings")
-			settings.Use(middleware.RBACCheckEndpoint(s.permissionService, "settings"))
 			{
+				// General settings
 				settings.GET("", settingHandler.GetAllSettings)
 				settings.PUT("", settingHandler.BatchUpdateSettings)
-				settings.GET("/:key", settingHandler.GetSetting)
-				settings.PUT("/:key", settingHandler.UpdateSetting)
-			}
 
-			// API Key routes (authenticated users)
-			apiKeys := protected.Group("/api-keys")
-			apiKeys.Use(middleware.RBACCheckEndpoint(s.permissionService, "api_key"))
-			{
-				apiKeys.POST("", apiKeyHandler.CreateAPIKey)
-				apiKeys.GET("", apiKeyHandler.ListAPIKeys)
-				apiKeys.GET("/:id", apiKeyHandler.GetAPIKey)
-				apiKeys.DELETE("/:id", apiKeyHandler.RevokeAPIKey)
-			}
+				// Key-value settings
+				settings.GET("/kv/:key", settingHandler.GetSetting)
+				settings.PUT("/kv/:key", settingHandler.UpdateSetting)
 
-			// Webhook routes (authenticated users)
-			webhooks := protected.Group("/webhooks")
-			webhooks.Use(middleware.RBACCheckEndpoint(s.permissionService, "webhook"))
-			{
-				webhooks.POST("", webhookHandler.CreateWebhook)
-				webhooks.GET("", webhookHandler.ListWebhooks)
-				webhooks.GET("/:id", webhookHandler.GetWebhook)
-				webhooks.PUT("/:id", webhookHandler.UpdateWebhook)
-				webhooks.DELETE("/:id", webhookHandler.DeleteWebhook)
-				webhooks.POST("/:id/test", webhookHandler.TestWebhook)
-			}
-
-			// OIDC Provider management routes (admin only)
-			oidcProviders := protected.Group("/oidc/providers")
-			oidcProviders.Use(middleware.RBACCheckEndpoint(s.permissionService, "oidc_provider"))
-			{
-				oidcProviders.POST("", oidcHandler.CreateProvider)
-				oidcProviders.GET("", oidcHandler.ListProviders)
-				oidcProviders.PUT("/:id", oidcHandler.UpdateProvider)
-				oidcProviders.DELETE("/:id", oidcHandler.DeleteProvider)
+				// OIDC provider settings
+				settings.POST("/oidc", oidcHandler.CreateProvider)
+				settings.GET("/oidc", oidcHandler.ListProviders)
+				settings.PUT("/oidc/:id", oidcHandler.UpdateProvider)
+				settings.DELETE("/oidc/:id", oidcHandler.DeleteProvider)
 			}
 		}
 	}

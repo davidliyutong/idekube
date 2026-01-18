@@ -168,15 +168,15 @@ func (s *OIDCService) HandleCallback(ctx context.Context, state, code string) (*
 		emailPtr := &claims.Email
 		displayName := claims.Name
 		user = &models.User{
-			Username:      username,
-			Email:         emailPtr,
-			EmailVerified: claims.EmailVerified,
-			DisplayName:   &displayName,
-			Role:          models.UserRoleUser,
-			Status:        models.UserStatusActive,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			Role:            models.UserRoleUser,
+			Email:           emailPtr,
+			IsEmailVerified: claims.EmailVerified,
 		}
+		user.Identifier = username
+		user.DisplayName = &displayName
+		user.Status = models.UserStatusActive
+		user.CreatedAt = time.Now()
+		user.UpdatedAt = time.Now()
 
 		err = s.userRepo.Create(ctx, user)
 		if err != nil {
@@ -188,8 +188,8 @@ func (s *OIDCService) HandleCallback(ctx context.Context, state, code string) (*
 			displayName := claims.Name
 			user.DisplayName = &displayName
 		}
-		if claims.EmailVerified && !user.EmailVerified {
-			user.EmailVerified = true
+		if claims.EmailVerified && !user.IsEmailVerified {
+			user.IsEmailVerified = true
 		}
 		_ = s.userRepo.Update(ctx, user)
 	}

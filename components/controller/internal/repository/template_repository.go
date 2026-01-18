@@ -68,27 +68,16 @@ func (r *TemplateRepository) ListPublic(ctx context.Context) ([]*models.Template
 	return templates, err
 }
 
-// ListByOwner lists templates owned by a specific owner
-func (r *TemplateRepository) ListByOwner(ctx context.Context, ownerType models.OwnerType, ownerID int64) ([]*models.Template, error) {
-	var templates []*models.Template
-	err := r.db.WithContext(ctx).Where("owner_type = ? AND owner_id = ?", ownerType, ownerID).
-		Order("created_at DESC").
-		Find(&templates).Error
-	return templates, err
-}
-
-// ListAccessible lists all templates accessible to a user (public + owned)
+// ListAccessible lists all templates accessible to a user (public + active)
 func (r *TemplateRepository) ListAccessible(ctx context.Context, userID int64, orgIDs []int64) ([]*models.Template, error) {
 	var templates []*models.Template
 
-	query := r.db.WithContext(ctx).Where("is_public = ?", true).
-		Or("owner_type = ? AND owner_id = ?", "user", userID)
+	// Templates are system-level, so public or active templates are accessible
+	err := r.db.WithContext(ctx).
+		Where("is_public = ? OR status = ?", true, models.TemplateStatusActive).
+		Order("created_at DESC").
+		Find(&templates).Error
 
-	if len(orgIDs) > 0 {
-		query = query.Or("owner_type = ? AND owner_id IN ?", "organization", orgIDs)
-	}
-
-	err := query.Order("created_at DESC").Find(&templates).Error
 	return templates, err
 }
 
@@ -102,7 +91,7 @@ func (r *TemplateRepository) ListAll(ctx context.Context, opts *models.ListOptio
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -125,23 +114,18 @@ func (r *TemplateRepository) ListAll(ctx context.Context, opts *models.ListOptio
 }
 
 // ListAccessibleByUser lists templates accessible to a user with pagination
+// Templates are system-level: public templates and active templates are accessible
 func (r *TemplateRepository) ListAccessibleByUser(ctx context.Context, userID int64, orgIDs []int64, opts *models.ListOptions) ([]*models.Template, int64, error) {
 	var templates []*models.Template
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.Template{}).
-		Where("visibility = ?", models.TemplateVisibilityPublic).
-		Or("(owner_type = ? AND owner_id = ?)", models.OwnerTypeUser, userID)
-
-	if len(orgIDs) > 0 {
-		query = query.Or("(visibility = ? AND owner_type = ? AND owner_id IN ?)",
-			models.TemplateVisibilityOrganization, models.OwnerTypeOrganization, orgIDs)
-	}
+		Where("is_public = ? OR status = ?", true, models.TemplateStatusActive)
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total
@@ -163,18 +147,18 @@ func (r *TemplateRepository) ListAccessibleByUser(ctx context.Context, userID in
 	return templates, total, nil
 }
 
-// ListByVisibility lists templates by visibility level with pagination
-func (r *TemplateRepository) ListByVisibility(ctx context.Context, visibility models.TemplateVisibility, opts *models.ListOptions) ([]*models.Template, int64, error) {
+// ListByStatus lists templates by status with pagination
+func (r *TemplateRepository) ListByStatus(ctx context.Context, status string, opts *models.ListOptions) ([]*models.Template, int64, error) {
 	var templates []*models.Template
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.Template{}).
-		Where("visibility = ?", visibility)
+		Where("status = ?", status)
 
 	// Apply search filter
 	if opts.Search != "" {
 		searchPattern := "%" + opts.Search + "%"
-		query = query.Where("name ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
+		query = query.Where("identifier ILIKE ? OR display_name ILIKE ?", searchPattern, searchPattern)
 	}
 
 	// Count total

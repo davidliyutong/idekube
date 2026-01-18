@@ -60,7 +60,7 @@ func (m *JWTManager) GenerateTokenPair(ctx context.Context, user *models.User) (
 	accessTokenExpiresAt := now.Add(m.config.AccessTokenDuration)
 	accessClaims := &Claims{
 		UserID:    user.ID,
-		Username:  user.Username,
+		Username:  user.Identifier,
 		Role:      user.Role,
 		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -68,7 +68,7 @@ func (m *JWTManager) GenerateTokenPair(ctx context.Context, user *models.User) (
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "idekube-controller",
-			Subject:   user.Username,
+			Subject:   user.Identifier,
 		},
 	}
 
@@ -87,7 +87,7 @@ func (m *JWTManager) GenerateTokenPair(ctx context.Context, user *models.User) (
 	refreshTokenExpiresAt := now.Add(m.config.RefreshTokenDuration)
 	refreshClaims := &Claims{
 		UserID:    user.ID,
-		Username:  user.Username,
+		Username:  user.Identifier,
 		Role:      user.Role,
 		TokenType: "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -96,7 +96,7 @@ func (m *JWTManager) GenerateTokenPair(ctx context.Context, user *models.User) (
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "idekube-controller",
-			Subject:   user.Username,
+			Subject:   user.Identifier,
 		},
 	}
 
@@ -127,7 +127,7 @@ func (m *JWTManager) GenerateToken(user *models.User) (string, time.Time, error)
 
 	claims := &Claims{
 		UserID:    user.ID,
-		Username:  user.Username,
+		Username:  user.Identifier,
 		Role:      user.Role,
 		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -135,7 +135,7 @@ func (m *JWTManager) GenerateToken(user *models.User) (string, time.Time, error)
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    "idekube-controller",
-			Subject:   user.Username,
+			Subject:   user.Identifier,
 		},
 	}
 
@@ -193,10 +193,10 @@ func (m *JWTManager) RefreshAccessToken(ctx context.Context, refreshTokenString 
 
 	// Generate new token pair
 	user := &models.User{
-		ID:       claims.UserID,
-		Username: claims.Username,
-		Role:     claims.Role,
+		Role: claims.Role,
 	}
+	user.ID = claims.UserID
+	user.Identifier = claims.Username
 
 	// FIXME: Disabled revocation of old refresh token for now, as it causes issues with multiple concurrent refreshes
 	// Revoke old refresh token
